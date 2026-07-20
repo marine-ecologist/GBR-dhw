@@ -1,0 +1,36 @@
+.Rproj.user
+.Rhistory
+.RData*
+.Ruserdata
+*.nc
+*.rdx
+*.rdb
+*.Rproj
+*.Rmd
+*.RData
+
+rmarkdown/**/cache/
+rmarkdown/**/cache/**/*
+rmarkdown/**/html/
+rmarkdown/**/html/**/*
+rmarkdown/**/cache/*.RData
+
+archive/
+outputs/
+data/
+datasets/
+docs2/
+rmarkdown 1/
+rmarkdown 2/
+code/
+QGIS_BLC2024/
+QGIS_export/
+QGIS_export
+rmarkdown old/
+rmarkdown_archive/
+archive/
+figure/
+QGIS_export/
+literature/
+images/
+figure/

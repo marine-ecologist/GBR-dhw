@@ -1,0 +1,762 @@
+---
+title: "Methods"
+subtitle: "Rapid intensification of coral bleaching on the Great Barrier Reef"
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    number-sections: true
+    code-fold: false
+execute:
+  echo: true
+  eval: false
+  include: true
+  warning: false
+  message: false
+---
+
+# Methods
+All analyses were conducted in `R`. Spatial data processing used `sf` for vector geometry operations and `terra` for raster handling, extraction and aggregation. Data wrangling, summaries and figure preparation used `tidyverse`, with plotting performed using `ggplot2`, `ggridges`, and `patchwork`. Bayesian changepoint detection was conducted using `Rbeast`, and Bayesian spatial proportional-odds models were fitted using `INLA`. Where possible, processing was implemented as scripted, reproducible workflows using functions from the `dhw` package for climatology construction, hotspot calculation, Degree Heating Week estimation, hindcast generation and raster summaries (https://marine-ecologist.github.io/dhw/index.html).
+
+## Study region and spatial data
+
+Analyses were conducted across the Great Barrier Reef (GBR), Australia. Reef polygons were derived from the GBR reef spatial dataset (GBRMPA) and filtered to exclude mainland and non-reef features. All spatial analyses were conducted using valid reef geometries, with geographic layers maintained in WGS84 and projected calculations undertaken in UTM Zone 55S. Reef centroids were used for point-based extraction and spatial modelling, while reef polygons were retained for area-weighted summaries and prediction.
+
+A GBR analysis domain was constructed from the reef polygon layer using a concave hull around reef features, followed by buffering to define the spatial extent used for raster cropping, interpolation and prediction. Separate spatial masks were used where early aerial bleaching surveys had a reduced spatial footprint.
+
+## Sea surface temperature and thermal-stress data
+
+Daily sea surface temperature (SST), SST anomaly (SSTA) and Degree Heating Week (DHW) rasters were compiled for the GBR from gridded observational products (see Code Availability). Long-term analyses used annual austral summer summaries from 1940 to 2025. Austral years were defined so that December was assigned to the following year.For DHW, annual values were calculated as the maximum DHW observed within each year.
+
+Daily DHW rasters were summarised annually using the maximum value per grid cell. For event-specific analyses, annual DHW layers were extracted for the GBR mass bleaching years 1998, 2002, 2016, 2017, 2020, 2022, 2024 and 2025. DHW values were extracted to GBR reef polygons using maximum raster values within each reef polygon. These reef-level DHW values were used as the principal thermal-stress covariate in the bleaching models.
+
+## Extension of OISST to a long-term hindcast record
+
+
+We reconstructed historical sea surface temperatures (SSTs) by applying a seasonally stratified quantile mapping bias correction to ERA5 SST anomalies relative to observed OISST anomalies during their overlap period (Cannon et al., 2015; Piani et al., 2010). We first removed the monthly climatology to generate anomalies, performed quantile mapping on the anomaly distributions by calendar month, and then added back the observed monthly climatology to create the final hindcast SST time series
+
+OISST was used as the observational reference dataset and ERA5 SST was used as the longer hindcast dataset. Bias correction was performed over the OISST–ERA5 overlap period, using calendar-month-specific anomaly distributions rather than absolute SST values. This approach preserves the observed OISST seasonal cycle while retaining the longer temporal coverage and sub-seasonal variability of ERA5.
+
+For each grid cell, monthly climatologies were calculated separately for OISST and ERA5 over the overlap period. Both datasets were converted to monthly anomalies by subtracting their respective calendar-month climatologies. ERA5 anomalies were then mapped to the corresponding OISST anomaly distribution within each calendar month using quantile delta mapping. Corrected anomalies were converted back to SST by adding the OISST monthly climatology, producing a continuous, bias-corrected SST record on the OISST scale. The corrected hindcast was combined with the observed OISST record to create the extended OISST2 SST dataset used for long-term analyses.
+
+The reconstruction used the `dhw::hindcast()` workflow with OISST as input1, ERA5 as input2, 100 quantiles, quantile delta mapping, an overlap period from 1982-01-01 to 2020-12-31, and combine = TRUE. The resulting extended SST raster was then passed to `dhw::create_climatology()` to derive associated SST anomaly, hotspot and DHW products. Annual long-term DHW summaries were calculated from the extended OISST2 DHW raster by aggregating daily DHW layers to annual maxima.
+
+## Temporal trends and changepoint detection
+
+Annual GBR-wide SST, SSTA and DHW time series were calculated by averaging raster cells across the GBR domain. Bayesian changepoint detection was applied separately to the annual SST, SSTA and DHW time series using `BEAST`, with no seasonal component and an annual time step. Bayesian changepoint detection identified the most probable years at which the underlying SST trend changed. Changepoints were extracted from the posterior trend component, ranked by their posterior changepoint probability, and used to divide the SST time series into pre- and post-shift periods.
+
+For SST and SSTA, the time series was divided at the most probable changepoint. Linear models were then fitted separately to the pre- and post-changepoint periods to estimate whether trends differed before and after the detected shift. Segment means were also calculated to describe shifts in baseline thermal conditions.
+
+## Aerial bleaching data
+
+Aerial bleaching survey data were compiled for GBR mass bleaching events from 1998 to 2025 (Berklemans, Hughes, Cantin references). Each reef-year observation was assigned a maximum aerial bleaching score where 0 = no bleaching, 1 = low bleaching (1-10%), 2 = medium bleaching (11-30%), 3 = high bleaching (31-60%), 4 = very high bleaching (61-90%), and 5 = extreme bleaching (>90%). Where multiple observations were available for a reef within a year, the maximum aerial score was used to represent the strongest bleaching response recorded for that reef during that event. Sensitivity analysis to using median scores showed no differences (data not shown).
+
+Aerial bleaching scores were treated as ordered categorical responses. For `INLA` spatial modelling, scores were grouped into the same ordered categories with the exception of 4 (very high bleaching, 61-90%) and 5 (extreme bleaching >90%) being collapsed into a single category ("very high bleaching", 61-100%). This was done as the new cat 5 was only introduced in...
+
+## Spatial interpolation of bleaching and thermal stress
+
+Spatial maps of aerial bleaching severity and DHW were generated for each mass bleaching event. Aerial bleaching observations were spatially interpolated across the GBR analysis domain to visualise event footprints and regional patterns. DHW maps were generated from annual maximum DHW rasters cropped to the GBR domain. Maps were produced for 1998, 2002, 2016, 2017, 2020, 2022, 2024 and 2025 to compare thermal-stress exposure and observed bleaching severity among events.
+
+## Bayesian spatial model of bleaching severity
+
+We modelled the relationship between accumulated thermal stress and observed coral bleaching severity using a Bayesian spatial proportional-odds model fitted with INLA. The response variable was the maximum aerial bleaching score recorded for each reef during each mass bleaching year. Original aerial scores were grouped into four ordered severity classes: no bleaching, low bleaching, moderate bleaching and severe bleaching. These classes were encoded as an ordered categorical response from 1 to 4, with higher values indicating greater bleaching severity.
+
+Thermal exposure was represented by annual maximum Degree Heating Weeks (DHW). Daily OISST-derived DHW rasters were projected to UTM Zone 55S and aggregated to annual maxima. Event-year DHW layers were retained for 1998, 2002, 2016, 2017, 2020, 2022, 2024 and 2025. Reef-level DHW values were extracted as the maximum raster value intersecting each reef polygon, providing a conservative estimate of the highest thermal stress experienced by each reef during each bleaching year.
+
+The bleaching model included DHW, bleaching year and their interaction as fixed effects. Year was treated as a categorical factor, with 1998 used as the reference year. The DHW-by-year interaction allowed the relationship between thermal stress and bleaching severity to vary among mass bleaching events, rather than assuming a constant bleaching response through time. 
+
+The model was specified as:
+
+```{r}
+#| eval: false
+bleaching_score ~ DHW * year + f(spatial_field, model = spde) + f(reef_id, model = "iid")
+```
+
+where `aerial` is the ordered bleaching category, `dhw` is annual maximum Degree Heating Weeks, `year` is the bleaching event year, `spatial.field` is a spatially structured random effect, and `LABEL_ID` is a reef-level independent random effect.
+
+Spatial autocorrelation was represented using a stochastic partial differential equation (SPDE) approximation to a Matérn Gaussian random field. The spatial mesh was constructed from the GBR reef-domain boundary, with mesh resolution set to allow finer triangles inside the GBR reef domain and coarser triangles outside the domain, reducing edge effects while maintaining computational efficiency. The Matérn field was specified with smoothness parameter alpha = 2. Reef centroids were projected onto the mesh using INLA projection matrices, linking each observed reef-year bleaching observation to the latent spatial field.
+
+A reef-level random intercept was included using LABEL_ID to account for repeated observations of the same reef across bleaching years and for residual reef-specific differences not explained by DHW, year or broad-scale spatial structure. This term captures persistent among-reef variation in bleaching susceptibility, while the SPDE field captures spatially structured residual variation across the GBR.
+
+The model was fitted using the proportional-odds likelihood (`family = "pom"`) with a logit cumulative distribution function. This formulation estimates the cumulative probability that a reef belongs to each bleaching category or lower, conditional on thermal stress, year, reef identity and spatial location. The model therefore preserves the ordinal nature of the aerial bleaching scores and avoids treating the response as either continuous or nominal.
+
+For prediction, annual maximum DHW was extracted to all GBR reef polygons for each mass bleaching year. Prediction points were generated from reef centroids, while polygon geometries were retained for mapping and area summaries. Factor levels for bleaching year and reef identity were harmonised between observed and prediction datasets to ensure consistent model matrices. The fitted model was then used to predict bleaching severity for each reef-year combination across the GBR.
+
+Posterior linear predictors were transformed into category probabilities using the estimated proportional-odds cutpoints. Prediction uncertainty was summarised using posterior quantiles of the fitted linear predictor and propagated through the same proportional-odds transformation.
+
+To estimate the spatial footprint of bleaching, predicted category probabilities were combined with reef polygon area. Reef polygons were transformed to UTM Zone 55S and area was calculated in square kilometres. For each reef-year and bleaching category, expected affected area was calculated as polygon area multiplied by the predicted probability of that category. Expected areas were then summed across reefs to estimate the total GBR reef area in each bleaching severity class for each mass bleaching event.
+
+## Prediction across GBR reefs
+
+Model predictions were generated for all reef polygons across the GBR for each mass bleaching year. For each reef-year combination, annual maximum DHW was extracted from the corresponding event-year raster. Reef centroids were used to project predictions through the fitted spatial mesh, while predictions were returned to reef polygons for mapping and area summaries.
+
+For each reef-year polygon, posterior fitted values were converted to probabilities for each ordered bleaching category using the estimated proportional-odds cutpoints. The modal predicted bleaching category was identified as the category with the highest posterior mean probability. Prediction uncertainty was summarised using posterior lower and upper quantiles of fitted values, propagated through the proportional-odds probability transformation.
+
+## Hindcasts of bleaching severity across the 20th and 21st centuries
+
+We used the fitted spatial proportional-odds model to reconstruct bleaching severity across the full 1940–2025 thermal record. For each reef and year, maximum annual DHW was extracted from the reconstructed OISST2 record onto the spatially distinct reef polygons, and the linear predictor was evaluated as the sum of the model intercept, the DHW fixed effect, the spatial random field projected to each reef centroid, and the reef-level random effect where available. Because the year effects are estimated relative to 1998, the earliest event in the aerial record, the year contribution was held fixed at this reference level for all predictions. Each hindcast value therefore represents a counterfactual bleaching estimate: the severity that a reef's reconstructed thermal stress would have produced under the dose–response relationship observed at the onset of the modern bleaching era, isolating the effect of thermal dose from the subsequent rise in contextual vulnerability. Predicted latent values were mapped to ordinal category probabilities through the fitted cumulative logit cut-points, reconstructed on the ordered-threshold scale as the cumulative sum of the first threshold and the exponentiated increments of the remainder. Bleaching severity was summarised as the probability of reaching the high-or-greater categories, `P(Y ≥ high)`, equivalent to more than 30% of the reef bleached, and reef-level predictions were aggregated to the annual number of reefs predicted to reach this threshold.
+
+The spatial random field was projected to prediction locations using a projector matrix constructed from the same SPDE mesh used for model fitting, so that reefs distant from surveyed locations shrink smoothly toward the field mean with correspondingly wider uncertainty. Predictions were retained across the full reconstructed DHW range; because historical thermal stress rarely reached the levels observed in recent events, most hindcast years fall within the interpolated portion of the dose–response and are not extrapolations beyond the fitted DHW support.
+
+To relate bleaching severity to large-scale climate forcing, we paired each mass-bleaching event with the corresponding boreal-winter (November–March) Niño 3.4 sea-surface temperature anomaly. Event severity was summarised by the model's per-event intercepts, which express bleaching propensity relative to the 1998 reference after conditioning on thermal dose and the spatial field, and we regressed these on the Niño 3.4 anomaly by weighted least squares (weights the inverse squared posterior standard error of each intercept, with 1998 held as the zero reference). Because the anomaly is identified from only eight events, this regression is deliberately parsimonious and is interpreted alongside the descriptive distribution of severity by ENSO phase rather than as a powered test of a temporal change in coupling; the historically established association between El Niño and mass bleaching is taken as prior context rather than re-estimated here.
+
+## Reef-area estimates of bleaching footprint
+
+The spatial footprint of bleaching was estimated by combining predicted category probabilities with reef polygon area. For each year and bleaching category, expected reef area was calculated as:
+
+```{r}
+#| eval: false
+#| include: true
+expected_area_km2 <- reef_area_km2 * predicted_category_probability
+```
+
+Expected areas were then summed across reef polygons to estimate the total GBR reef area in each bleaching category for each mass bleaching event. The proportion of reef area experiencing bleaching was calculated by summing the predicted area in categories greater than no or low bleaching and dividing by total predicted reef area.
+
+## Repeat-reef transition analysis
+
+To assess repeat bleaching and changes in bleaching state through time, reefs surveyed repeatedly between 1998 and 2024 were analysed as reef-level trajectories. For each reef, aerial bleaching scores were ordered by survey year. Transitions were calculated between each survey and the next available survey for the same reef.
+
+For each transition, the direction of change was classified as an increase, decrease or no change in bleaching score. Transition probabilities were calculated conditional on the starting bleaching score and survey interval. Reefs with no subsequent survey were excluded from transition calculations. Analyses focused on reefs that were already bleached at the start of each interval, allowing assessment of whether reefs tended to escalate, remain stable or decline in bleaching severity between mass bleaching events.
+
+Alluvial plots were used to visualise reef-level changes in bleaching category through successive survey years. Transition probability plots were used to summarise the probability of increasing, decreasing or remaining in the same bleaching category between events.
+
+## Within-reef reparameterisation (Mundlak decomposition) 
+The year main effects in the full spatial model estimate bleaching propensity at reference thermal stress pooled across all surveyed reefs, and therefore conflate two distinct sources of variation: a genuine change in how individual reefs respond to heat stress, and differences among years in which reefs were surveyed. To separate these, we refitted the model on the repeat-survey panel with event-level DHW decomposed into a between-reef component — each reef's mean DHW — and a within-reef component, the deviation of each event from that reef mean (Mundlak 1978):
+
+`η = β₀ + β_dev·DHW′ + β_bar·DHW̄ + β_year + β_dev:year·DHW′ + v_reef`
+
+where DHW′ is the within-reef deviation, DHW̄ the reef mean, and v_reef a reef-level random effect. In this parameterisation β_dev estimates the acute, within-reef dose–response (the response of a given reef to heat above its own norm), while β_bar absorbs the between-reef thermal gradient. The year intercepts and the DHW′×year interactions are thereby purged of between-reef thermal composition, so that any remaining temporal separation reflects within-reef change in bleaching propensity.
+
+The within-reef dose–response was well identified and robust (β_dev ≈ 0.42, 95% CrI ≈ 0.31–0.54) and approximately half the pooled estimate, consistent with the pooled coefficient having combined a steep between-reef gradient with a shallower within-reef one. The marked divergence between the within- and between-reef DHW coefficients confirms that the pooled dose–response estimate combined two distinct gradients and that the decomposition was warranted. We base inference on the within-reef component, which is identified from repeated observation of the same reefs; we do not interpret β_bar substantively, because the reef mean DHW is derived from the same event-level values and is therefore collinear both with each reef's tendency to receive high-DHW events and with the regional spatial field, and its estimate was correspondingly unstable across specifications.
+
+## Replacement of the spatial field with reef-level effects in the repeat-survey model 
+In the full dataset, the SPDE spatial field absorbed nearly all reef-level variance, leaving the reef independent random effect negligible (precision posterior median ≈ 1.3 × 10⁴). Because the spatial field operates at a regional scale (~357 km) that is collinear with the between-reef thermal gradient, retaining it in the repeat-survey model would compete with the reef-level effects and the reef-mean DHW term for the same large-scale variation. For the within-reef analysis we therefore replaced the spatial field with a reef-level random effect (PC prior, P(σ > 3) = 0.01), allowing reef identity to carry the spatial structure explicitly. Under this specification the reef-level term carried substantial variance (σ ≈ 1.4–1.8 logit units), confirming that the negligible reef variance in the full model was an artefact of the field absorbing it, and the within-reef year contrasts were estimated net of validated reef-level structure. We verified that the year-effect ranking was consistent whether reef structure was modelled by the spatial field or by reef random effects, while noting that the reef-mean DHW term materially altered individual year intercepts (notably deflating the 2020 estimate), which we attribute to that year's surveyed reefs having higher mean thermal exposure.
+
+## Data availability
+
+Input datasets and derived data products will be made available at publication.
+
+## Code availability
+
+### SST datasets
+
+The `dhw` package provides a series of functions for downloading and processing datasets (`CoralTemp`, `ERA5`, `ERA5`). The workflow for each dataset is `download`(global data) \> `process` (subset for GBR). The `process` functions in `dhw` allow for subsetting global to the GBR extent defined by a polygon (in this case the convex hull of the GBR reef extent) and downsampling to allow comparisons between datasets.
+
+#### CoralTemp
+
+`download_gbr_spatial` downloads the GBR reefs dataset (including Torres Strait) from eAtlas and imports as `sf` polygons (see `?dhw::download_gbr_spatial` for details)
+
+`download_CoralTemp` downloads the global `CoralTemp` dataset from the NOAA thredds catalogue (see `?dhw::download_CoralTemp` for details)
+
+`process_CoralTemp` subsets the global `CoralTemp` dataset to the GBR and runs a few other functions (mask, downsample) if specified (see `?dhw::process_CoralTemp` for details)
+
+Note: global `nc` files are large (493.28GB for all parameters) and processing data is noteably slow due to the use of `terra`
+
+```{r}
+#| eval: false
+#| include: true
+
+# remove.packages("dhw")
+# remotes::install_github("marine-ecologist/dhw", ref="205731f")
+
+library(dhw)
+sf::sf_use_s2(FALSE)
+
+# get GBR hull 
+GBR_hull <- download_gbr_spatial(return = "hull")
+
+# download data
+download_CoralTemp(url = "https://www.ncei.noaa.gov/thredds-ocean/fileServer/crw/5km/v3.1/nc/v1.0/daily/",
+                   start_date = "2025-07-01",
+                   end_date = "2026-01-31",
+                   dest_dir = "/Volumes/Extreme_SSD/dhw/CRW/CRW_SST/",
+                   variable = "sst",
+                   mc.cores = 12)
+
+download_CoralTemp(url = "https://www.ncei.noaa.gov/thredds-ocean/fileServer/crw/5km/v3.1/nc/v1.0/daily/",
+                   start_date = "2025-07-01",
+                   end_date = "2026-01-31",
+                   dest_dir = "/Volumes/Extreme_SSD/dhw/CRW/CRW_SSTA/",
+                   variable = "ssta",
+                   mc.cores = 12)
+
+download_CoralTemp(url = "https://www.ncei.noaa.gov/thredds-ocean/fileServer/crw/5km/v3.1/nc/v1.0/daily/",
+                   start_date = "2025-07-01",
+                   end_date = "2026-01-31",
+                   dest_dir = "/Volumes/Extreme_SSD/dhw/CRW/CRW_HS/",
+                   variable = "hs",
+                   mc.cores = 12)
+
+download_CoralTemp(url = "https://www.ncei.noaa.gov/thredds-ocean/fileServer/crw/5km/v3.1/nc/v1.0/daily/",
+                   start_date = "2025-07-01",
+                   end_date = "2026-01-31",
+                   dest_dir = "/Volumes/Extreme_SSD/dhw/CRW/CRW_DHW/",
+                   variable = "dhw",
+                   mc.cores = 12)
+
+# check timeseries 
+
+check_missing_dates(folder = "/Volumes/Extreme_SSD/dhw/CRW/CRW_SST/",
+                    start_date = "1985-06-01",
+                    end_date =  "2026-01-31")
+
+
+check_missing_dates(folder = "/Volumes/Extreme_SSD/dhw/CRW/CRW_SSTA/",
+                    start_date = "1985-06-01",
+                    end_date =  "2026-01-31")
+
+check_missing_dates(folder = "/Volumes/Extreme_SSD/dhw/CRW/CRW_HS/",
+                    start_date = "1985-06-01",
+                    end_date =  "2026-01-31")
+
+check_missing_dates(folder ="/Volumes/Extreme_SSD/dhw/CRW/CRW_DHW/",
+                    start_date = "1985-06-01",
+                    end_date =  "2026-01-31")
+
+
+# process data
+process_CoralTemp(input = "/Volumes/Extreme_SSD/dhw/CRW/CRW_SST",
+                  polygon = GBR_hull, crs = "EPSG:7844",  mc.cores = 8,
+                  combinedfilename = "/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_SST2.tif",
+                  crop=TRUE, mask=TRUE, downsample=FALSE)
+
+
+process_CoralTemp(input = "/Volumes/Extreme_SSD/dhw/CRW/CRW_SSTA",
+                  polygon = GBR_hull, crs = "EPSG:7844",  mc.cores = 8,
+                  combinedfilename = "/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_SSTA.tif",
+                  crop=TRUE, mask=TRUE, downsample=FALSE)
+
+process_CoralTemp(input = "/Volumes/Extreme_SSD/dhw/CRW/CRW_HS",
+                  polygon = GBR_hull, crs = "EPSG:7844",  mc.cores = 8,
+                  combinedfilename = "/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_HS.tif",
+                  crop=TRUE, mask=TRUE, downsample=FALSE)
+
+process_CoralTemp(input = "/Volumes/Extreme_SSD/dhw/CRW/CRW_DHW",
+                  polygon = GBR_hull, crs = "EPSG:7844",  mc.cores = 8,
+                  combinedfilename = "/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_DHW2.tif",
+                  crop=TRUE, mask=TRUE, downsample=FALSE)
+
+
+# list of exported files:
+GBR_CRW_SST <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_SST.tif")
+GBR_CRW_SSTA <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_SSTA.tif")
+GBR_CRW_HS <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_HS.tif")
+GBR_CRW_DHW <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_CoralTemp_DHW.tif")
+
+
+
+
+```
+
+#### OISST
+
+`download_OISST` downloads the global OISST dataset from NOAA NCEI https (see `?dhw::download_OISST` for details)
+
+`process_OISST` subsets the global OISST dataset to the GBR and runs a few other functions (mask, downsample) if specified (see `?dhw::process_OISST` for details)
+
+Note: global `nc` files are large (26.38GB for all parameters) and processing data is noteably slow due to the use of `terra`
+
+```{r}
+#| eval: false
+
+
+library(dhw)
+
+GBR_hull <- download_gbr_spatial(return = "hull")
+
+
+download_OISST(url = "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/",
+               start_date = "2025-06-26",
+               end_date = "2025-06-30",
+               dest_dir = "/Volumes/Extreme_SSD/dhw/OISST/",
+               mc.cores = 1)
+
+
+check_missing_dates(folder = "/Volumes/Extreme_SSD/dhw/OISST/",
+                    start_date = "1981-09-01",
+                    end_date = "2025-06-14")
+
+process_OISST(input = "/Volumes/Extreme_SSD/dhw/OISST/",
+              polygon = GBR_hull, crs = "EPSG:7844", preliminary=FALSE, 
+              combinedfilename = "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_full.rds",
+              crop=TRUE, mask=TRUE, downsample=FALSE, mc.cores=12)
+
+
+GBR_OISST <- terra::rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_full.rds")
+GBR_OISST_climatology <- create_climatology(GBR_OISST, save_output="/Volumes/Extreme_SSD/dhw/outputs/GBR_OISST_full.rds", baa=TRUE, return=FALSE, overwrite=TRUE)
+
+# list of exported files:
+GBR_OISST_SST <- writeRaster(GBR_OISST_climatology %>% .$sst, 
+                             "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_SST.tif", overwrite=TRUE)
+GBR_OISST_SSTA <- writeRaster(GBR_OISST_climatology %>% .$anomaly, 
+                              "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_SSTA.tif", overwrite=TRUE)
+GBR_OISST_BAA <- writeRaster(GBR_OISST_climatology %>% .$baa, 
+                            "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_BAA.tif", overwrite=TRUE)
+GBR_OISST_HS<- writeRaster(GBR_OISST_climatology %>% .$hotspots, 
+                            "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_HS.tif", overwrite=TRUE)
+GBR_OISST_DHW <- writeRaster(GBR_OISST_climatology %>% .$dhw, 
+                             "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_DHW.tif", overwrite=TRUE)
+
+# Read:
+GBR_OISST_SST <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_SST.tif")
+GBR_OISST_SSTA <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_SSTA.tif")
+GBR_OISST_HS <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_HS.tif")
+GBR_OISST_DHW <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST_DHW.tif")
+
+
+```
+
+#### ERA5
+
+`download_ERA5` downloads the global ERA5 dataset from NOAA NCEI https (see `?dhw::download_ERA5` for details)
+
+`process_ERA5` subsets the global ERA5 dataset to the GBR and runs a few other functions (mask, downsample) if specified (see `?dhw::process_ERA5` for details)
+
+Note: global `nc` files are large (26.38GB for all parameters) and processing data is noteably slow due to the use of `terra`
+
+```{r}
+#| eval: false
+
+
+library(dhw)
+
+
+
+GBR_hull <- download_gbr_spatial(return = "hull")
+
+
+download_ERA5(start_year = "2025",
+              end_year = "2025",
+              timeout = 60,
+              dest_dir = "/Users/rof011/Desktop/")
+
+# tmp <- rast("/Volumes/Extreme_SSD/dhw/ERA5/1981/ERA5-avhrr-v02r01.19810901.nc")
+
+process_ERA5(input = "/Volumes/Extreme_SSD/dhw/ERA5/",
+              polygon = GBR_hull, crs = "EPSG:7844",
+              combinedfilename = "/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_full.tif",
+              crop=TRUE, mask=TRUE, downsample=FALSE)
+
+
+GBR_ERA5 <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_full.tif")
+GBR_ERA5_climatology <- create_climatology(GBR_ERA5, save_output="/Volumes/Extreme_SSD/dhw/outputs/GBR_ERA5", baa=FALSE, return=FALSE)
+
+# list of exported files:
+GBR_ERA5_SST <- writeRaster(GBR_ERA5_climatology %>% .$sst, "/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_SST.tif", overwrite=TRUE)
+GBR_ERA5_SSTA <- writeRaster(GBR_ERA5_climatology %>% .$anomaly, "/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_SSTA.tif", overwrite=TRUE)
+GBR_ERA5_HS <- writeRaster(GBR_ERA5_climatology %>% .$hotspots, "/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_HS.tif", overwrite=TRUE)
+GBR_ERA5_DHW <- writeRaster(GBR_ERA5_climatology %>% .$dhw, "/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_DHW.tif", overwrite=TRUE)
+
+# Read:
+GBR_ERA5_SST <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_SST.tif")
+GBR_ERA5_SSTA <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_SSTA.tif")
+GBR_ERA5_HS <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_HS.tif")
+GBR_ERA5_DHW <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_ERA5_DHW.tif")
+
+
+```
+
+#### Extended OISST2
+
+OISST2 is based on an anomaly-based quantile mapping approach that reconstructs a hindcast SST time series (1941-1981) by bias-correcting ERA5 (1941-2025) to the shorter reference OISST dataset (1981-2025) (see `dhw::hindcast()` for further details). The OISST2 hindcast spans (1941-1981) and keeps the OISST dataset (1981-2025) intact, forming a continuous OISST reconstruction from 1941 to 2025.
+
+```{r}
+#| eval: false
+
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(qmap)
+library(terra)
+library(tibble)
+library(ggplot2)
+library(dhw)
+library(sf)
+library(terra)
+
+
+GBR_OISST_SST <- rast("/Users/rof011/GBR-dhw/datasets/GBR_OISST_SST.tif")
+GBR_ERA5_SST <- rast("/Users/rof011/GBR-dhw/datasets/GBR_ERA5_SST.tif")
+
+
+# Run hindcast using monthly anomaly Quantile Mapping
+GBR_OISST2_SST <- hindcast(
+       input1 = GBR_OISST_SST,
+       input2 = GBR_ERA5_SST,
+       n_quantiles = 100,
+       method = "qdm",
+       overlap_period = c("1982-01-01", "2025-12-31"),
+       combine = TRUE,
+       filename = "/Users/rof011/GBR-dhw/datasets/GBR_OISST2_SST.tif",
+       overwrite = TRUE
+   )
+
+
+GBR_OISST2_climatology <- create_climatology(GBR_OISST2_SST)
+
+
+# list of exported files:
+writeRaster(GBR_OISST2_climatology %>% .$sst,  
+           "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_SST.tif", overwrite=TRUE)
+writeRaster(GBR_OISST2_climatology %>% .$anomaly,
+            "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_SSTA.tif", overwrite=TRUE)
+writeRaster(GBR_OISST2_climatology %>% .$hotspots, 
+            "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_HS.tif", overwrite=TRUE)
+writeRaster(GBR_OISST2_climatology %>% .$dhw, 
+            "/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_DHW.tif", overwrite=TRUE)
+
+# Read:
+GBR_OISST2_SST <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_SST.tif")
+GBR_OISST2_SSTA <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_SSTA.tif")
+GBR_OISST2_HS <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_HS.tif")
+GBR_OISST2_DHW <- rast("/Volumes/Extreme_SSD/dhw/summaries/GBR_OISST2_DHW.tif")
+
+
+```
+
+### Aerial bleaching observations
+
+Combine aerial bleaching observations with GBR shape file to form spatial dataset. Original csv files:
+
+-   1998_BerklemansGBRData.csv
+-   2002_BerklemansGBRData.csv
+-   2016_HughesGBRAerial.csv
+-   2017_HughesGBRAerial.csv
+-   2020_HughesGBRAerialwArea.csv
+-   2022_GBRMPA_GBRAerialData.csv
+-   2024GBRReefAvg_AerialBLC_Final_QC_2Apr2024.csv
+
+2025 Update:
+
+-   2025GBR_Aerial_ReefAVGBLC_QC_Final.csv
+
+```{r}
+#| eval: false
+
+
+library(sf)
+library(tidyverse)
+
+
+# original files
+ABS_1998 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/AllYears_GBRBleaching_Aerial_IW/1998_BerklemansGBRData.csv") |>
+  group_by(LABEL_ID) |>
+  summarise(aerial_score=max(AIR_BLEACH_CAT), LAT=LAT, LONG = LONG) |>
+  st_as_sf(coords=c("LONG", "LAT")) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=1998)
+
+ABS_2002 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/AllYears_GBRBleaching_Aerial_IW/2002_BerklemansGBRData.csv") |>
+  group_by(LABEL_ID) |>
+  summarise(aerial_score=max(AIR_BLEACH_CAT), LAT=LAT, LONG = LONG) |>
+  st_as_sf(coords=c("LONG", "LAT")) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID))|>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2002)
+
+ABS_2016 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/AllYears_GBRBleaching_Aerial_IW/2016_HughesGBRAerial.csv") |>
+  group_by(LABEL_ID) |>
+  reframe(aerial_score=max(AIR_BLEACH_CAT), X_COORD=X_COORD, Y_COORD = Y_COORD, groups="LABEL_ID") |>
+  st_as_sf(coords=c("X_COORD", "Y_COORD")) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2016)
+
+ABS_2017 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/AllYears_GBRBleaching_Aerial_IW/2017_HughesGBRAerial.csv") |>
+  group_by(LABEL_ID) |>
+  summarise(aerial_score=max(AIR_BLEACH_CAT), X_COORD=X_COORD, Y_COORD = Y_COORD) |>
+  st_as_sf(coords=c("X_COORD", "Y_COORD")) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2017)
+
+ABS_2020 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/AllYears_GBRBleaching_Aerial_IW/2020_HughesGBRAerialwArea.csv") |>
+  group_by(LABEL_ID) |>
+  summarise(aerial_score=max(AIR_BLEACH_CAT), X_COORD=X_COORD, Y_COORD = Y_COORD) |>
+  st_as_sf(coords=c("X_COORD", "Y_COORD")) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2020)
+
+ABS_2022 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/AllYears_GBRBleaching_Aerial_IW/2022_GBRMPA_GBRAerialData.csv") |>
+  filter(!AIR_BLEACH_CAT %in% c("VeryLowCover", "NoView", "VeryLowCoralCover")) |> 
+  group_by(LABEL_ID) |>
+  mutate(aerial_score = parse_number(AIR_BLEACH_CAT)) |>
+  st_as_sf(coords=c("X_COORD", "Y_COORD")) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2022)
+
+ABS_2024 <- read.csv("/Users/rof011/GBR-dhw/QGIS_BLC2024/Aerial_BLC_Data/2024GBRReefAvg_AerialBLC_Final_QC_2Apr2024.csv") |>
+  st_as_sf(coords=c("Long", "Lat")) |>
+  rename(aerial_score=AerialCat_RoundUP) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2024)
+
+
+ABS_2025 <- read.csv("/Users/rof011/GBR-dhw/data/2025GBR_Aerial_ReefAVGBLC_QC_Final.csv") |>
+  st_as_sf(coords=c("X_COORD", "Y_COORD")) |>
+  rename(aerial_score=AerialBLC_CAT_RoundUP) |>
+  mutate(LABEL_ID = as.factor(LABEL_ID)) |>
+  select(LABEL_ID, aerial_score) |>
+  mutate(year=2025)
+
+
+# combined events (6,078 rows)
+all_events_sf <- rbind(ABS_1998, ABS_2002, ABS_2016, ABS_2017, ABS_2020, ABS_2022, ABS_2024, ABS_2025) |>
+  st_set_crs(4326) |>
+  st_transform(7844) |>
+  mutate(aerial_score = as.numeric(aerial_score)) %>%
+  filter(aerial_score <= 5) %>%
+  drop_na(aerial_score) |>
+  st_make_valid() |> 
+  mutate(LABEL_ID_FULL = LABEL_ID) |>  
+  mutate(LABEL_ID = stringr::str_extract(LABEL_ID, "^\\d{2}-\\d{3}")) 
+
+# combined events df (6078 rows)
+all_events_df <- rbind(ABS_1998, ABS_2002, ABS_2016, ABS_2017, ABS_2020, ABS_2022, ABS_2024, ABS_2025) |>
+  st_set_crs(4326) |>
+  st_transform(7844) |>
+  mutate(aerial_score = as.numeric(aerial_score)) %>%
+  filter(aerial_score <= 5) %>%
+  drop_na(aerial_score) |> 
+  as.data.frame() |> 
+  mutate(LABEL_ID_FULL = LABEL_ID) |>  
+  mutate(LABEL_ID = stringr::str_extract(LABEL_ID, "^\\d{2}-\\d{3}"))  
+
+# extract median and maximum
+all_events_reeflevel <- all_events_df |> 
+  group_by(LABEL_ID, year) |> 
+  summarise(max_aerial_score = max(aerial_score), 
+            median_aerial_score = median(aerial_score))
+
+
+# get spatial data for reefs and merge into multipolygons:
+gbr_shape <- download_gbr_spatial(return="combined") 
+gbr_shape_LABEL_ID <- download_gbr_spatial(return="base") |>  mutate(LABEL_ID = stringr::str_extract(LABEL_ID, "^\\d{2}-\\d{3}")) 
+
+gbr_multipoly <- gbr_shape_LABEL_ID %>%
+  st_make_valid() %>%
+  select(LABEL_ID, geometry) %>%
+  group_by(LABEL_ID) %>%
+  summarise(across(-geometry, first), do_union = FALSE, .groups = "drop") %>%
+  st_cast("MULTIPOLYGON")
+
+
+# 4 reefs missing, likely rezoning in early years
+# "10-809" "19-980" "21-393" "23-063"
+missing_gbr_multipoly <- setdiff(unique(all_events_reeflevel$LABEL_ID), unique(gbr_multipoly$LABEL_ID))
+ 
+# Create a named vector for replacement, insert into df
+id_replacements <- c("19-980"   = "19-080",  # "19-980" - can only be 19-080 - transcription issue?
+                     "21-393"   = "21-394",  # "21-393 "graf rock" in online zoning maps, GBRMPA merges with 21-394 in polygons   
+                     "23-063"   = "23-061",  # "23-063 Pearl ledge" in Berklemans thesis, 23-061C in GBRMPA maps
+                     "10-809"   = "99-809")  # classic GBRMPA, 10-809 in SORT_GBR_I and 99-809 in LABEL_ID, 
+
+all_events_reeflevel <- all_events_reeflevel |> 
+  mutate(LABEL_ID = ifelse(LABEL_ID %in% names(id_replacements), 
+                           id_replacements[LABEL_ID], 
+                           LABEL_ID))
+# recheck for missing labels
+# setdiff(names(missing_ids), unique(all_events_reeflevel$LABEL_ID))
+
+# combine aerial scores with gbr_multipoly sf (many to many relationship) due to multiple years for each reef (LABEL_ID)
+
+gbr_shape_aerial <- right_join(gbr_multipoly |> select(LABEL_ID), 
+                              all_events_reeflevel, by=c("LABEL_ID"), relationship = "many-to-many") |>
+  st_make_valid() |> 
+  st_zm(drop = TRUE, what = "ZM")
+
+## check for empty cells:
+#sum(sf::st_is_empty(gbr_shape_aerial))
+#empty <- gbr_shape_aerial %>% filter(sf::st_is_empty(geometry))
+
+
+## check duplicates in ID*yr - none
+# unique(st_geometry_type(gbr_shape_aerial))
+# gbr_shape_aerial |>
+#  count(LABEL_ID, year) |>
+#  filter(n > 1)
+
+## gbr_shape_aerial %>% st_area(.) |> sum()
+# 101073775248 [m^2] # 2025
+
+## recheck whether the boundaries fit the downloaded SST data:
+# ext(gbr_shape_aerial)
+# st_bbox(GBR_CRW_DHW)
+# st_bbox(GBR_OISST_DHW)
+# st_bbox(GBR_ERA5_DHW)
+
+## more checks of nrow
+# nrow(all_events_reeflevel)
+# nrow(gbr_shape_aerial)
+# sum(is.na(gbr_shape_aerial$max_aerial_score))
+
+# save data
+saveRDS(gbr_shape_aerial, "/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial.rds")
+
+
+```
+
+Extract SST for aerial bleaching observations polygons:
+
+```{r}
+#| eval: false
+
+library(terra)
+library(dhw)
+library(tidyverse)
+library(sf)
+
+
+gbr_shape_aerial <- readRDS("/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial.rds")
+
+
+# reimport DHW from 1)
+GBR_CRW_DHW <- rast("/Users/rof011/GBR-dhw/datasets/GBR_CoralTemp_DHW.tif")
+GBR_ERA5_DHW <- rast("/Users/rof011/GBR-dhw/datasets/GBR_ERA5_DHW.tif")
+GBR_OISST_DHW <- rast("/Users/rof011/GBR-dhw/datasets/GBR_OISST_DHW.tif")
+
+# extract annual max SST
+GBR_OISST_DHW_annual_max <- summarise_raster(GBR_OISST_DHW, index = "years", fun = max, na.rm = TRUE, overwrite=TRUE)
+GBR_CRW_DHW_annual_max <- summarise_raster(GBR_CRW_DHW, index = "years", fun = max, na.rm = TRUE, overwrite=TRUE) 
+GBR_ERA5_DHW_annual_max <- summarise_raster(GBR_ERA5_DHW, index = "years", fun = max, na.rm = TRUE, overwrite=TRUE) 
+
+# extract annual mean SST
+GBR_OISST_DHW_annual_mean <- summarise_raster(GBR_OISST_DHW, index = "years", fun = mean, na.rm = TRUE, overwrite=TRUE) 
+GBR_CRW_DHW_annual_mean <- summarise_raster(GBR_CRW_DHW, index = "years", fun = mean, na.rm = TRUE, overwrite=TRUE)
+GBR_ERA5_DHW_annual_mean <- summarise_raster(GBR_ERA5_DHW, index = "years", fun = mean, na.rm = TRUE, overwrite=TRUE)
+
+
+# OISST and ERA5 are missing coastal data for inshore reefs, so interpolate from adjacent cells using terra::focal()
+interp_borders <- function(raster_input) {
+  fill_adjacent_na <- function(x) {
+    center_value <- x[5]  # the center cell in a 3x3 matrix
+    surrounding_values <- x[-5]  # all neighbors except the center
+    
+    if (is.na(center_value) & any(!is.na(surrounding_values))) {
+      return(mean(surrounding_values, na.rm = TRUE))  # replace with mean of surrounding values
+    } else {
+      return(center_value)  # keep original value if not NA or completely surrounded by NAs
+    }
+  }
+
+  filled_raster <- focal(raster_input, w = matrix(1, 3, 3), fun = fill_adjacent_na) # Apply focal filter
+  
+  return(filled_raster)
+  
+}
+
+
+# extract area-weighted reef mean for OISST
+OISST_1998 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_1998"]), 
+                            gbr_shape_aerial |> filter(year==1998) |> mutate(GBR_NAME=LABEL_ID)) # 538 features
+OISST_2002 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2002"]),
+                            gbr_shape_aerial |> filter(year==2002)  |> mutate(GBR_NAME=LABEL_ID))
+OISST_2016 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2016"]), 
+                            gbr_shape_aerial |> filter(year==2016)  |> mutate(GBR_NAME=LABEL_ID))
+OISST_2017 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2017"]), 
+                            gbr_shape_aerial |> filter(year==2017)  |> mutate(GBR_NAME=LABEL_ID))
+OISST_2020 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2020"]), 
+                            gbr_shape_aerial |> filter(year==2020)  |> mutate(GBR_NAME=LABEL_ID))
+OISST_2022 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2022"]), 
+                            gbr_shape_aerial |> filter(year==2022)  |> mutate(GBR_NAME=LABEL_ID))
+OISST_2024 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2024"]), 
+                            gbr_shape_aerial |> filter(year==2024)  |> mutate(GBR_NAME=LABEL_ID))
+OISST_2025 <- extract_reefs(interp_borders(GBR_OISST_DHW_annual_max["y_2025"]), 
+                            gbr_shape_aerial |> filter(year==2025)  |> mutate(GBR_NAME=LABEL_ID))
+
+# extract area-weighted reef mean for CRW
+CRW_1998 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_1998"]),
+                          gbr_shape_aerial |> filter(year==1998) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2002 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2002"]), 
+                          gbr_shape_aerial |> filter(year==2002) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2016 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2016"]), 
+                          gbr_shape_aerial |> filter(year==2016) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2017 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2017"]), 
+                          gbr_shape_aerial |> filter(year==2017) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2020 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2020"]), 
+                          gbr_shape_aerial |> filter(year==2020) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2022 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2022"]), 
+                          gbr_shape_aerial |> filter(year==2022) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2024 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2024"]), 
+                          gbr_shape_aerial |> filter(year==2024) |> mutate(GBR_NAME=LABEL_ID))
+CRW_2025 <- extract_reefs(interp_borders(GBR_CRW_DHW_annual_max["y_2025"]), 
+                          gbr_shape_aerial |> filter(year==2025) |> mutate(GBR_NAME=LABEL_ID))
+
+
+# extract area-weighted reef mean for ERA5
+ERA5_1998 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_1998"]), 
+                           gbr_shape_aerial |> filter(year==1998) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2002 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2002"]), 
+                           gbr_shape_aerial |> filter(year==2002) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2016 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2016"]), 
+                           gbr_shape_aerial |> filter(year==2016) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2017 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2017"]), 
+                           gbr_shape_aerial |> filter(year==2017) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2020 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2020"]), 
+                           gbr_shape_aerial |> filter(year==2020) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2022 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2022"]), 
+                           gbr_shape_aerial |> filter(year==2022) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2024 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2024"]), 
+                           gbr_shape_aerial |> filter(year==2024) |> mutate(GBR_NAME=LABEL_ID))
+ERA5_2025 <- extract_reefs(interp_borders(GBR_ERA5_DHW_annual_max["y_2025"]), 
+                           gbr_shape_aerial |> filter(year==2025) |> mutate(GBR_NAME=LABEL_ID))
+
+# combine area-weighted means for each dataset
+gbr_shape_aerial_OISST <- rbind(OISST_1998, OISST_2002, OISST_2016, OISST_2017, OISST_2020, OISST_2022, OISST_2024, OISST_2025) |> 
+  select(-date) |> 
+  rename(dhw=sst)
+
+gbr_shape_aerial_CRW <-  rbind(CRW_1998, CRW_2002, CRW_2016, CRW_2017, CRW_2020, CRW_2022, CRW_2024, CRW_2025)  |> 
+  select(-date) |> 
+  rename(dhwCRW=sst)
+
+gbr_shape_aerial_ERA5 <-  rbind(ERA5_1998, ERA5_2002, ERA5_2016, ERA5_2017, ERA5_2020, ERA5_2022, ERA5_2024, ERA5_2025)  |> 
+  select(-date) |> 
+  rename(dhwERA5=sst)
+
+## check for NA data cells
+# gbr_shape_aerial_OISST %>%
+#     filter(is.na(dhw))
+# 
+# gbr_shape_aerial_CRW %>%
+#     filter(is.na(dhwCRW))
+# 
+# gbr_shape_aerial_ERA5 %>%
+#     filter(is.na(dhwERA5))
+
+saveRDS(gbr_shape_aerial_OISST, "/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds")
+saveRDS(gbr_shape_aerial_CRW, "/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_CRW.rds")
+saveRDS(gbr_shape_aerial_ERA5, "/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_ERA5.rds")
+
+
+#@ Quick plot to check spatial outputs:
+# a <- tm_shape(GBR_OISST_DHW_annual_max$y_1998) +
+#   tm_raster() +
+# tm_shape(gbr_shape_aerial_CRW) +
+#   tm_dots(size=0.1, fill="darkred") +
+# tm_shape(GBR_hull) +
+#   tm_polygons(col = "black", alpha = 0, lwd = 1)  # Transparent fill, black boundary
+# 
+# b <- tm_shape(GBR_CRW_DHW_annual_max["y_1998"]) +
+#   tm_raster() +
+# tm_shape(gbr_shape_aerial_CRW) +
+#   tm_dots(size=0.1, fill="darkred") +
+# tm_shape(GBR_hull) +
+#   tm_polygons(col = "black", fill_alpha = 0, lwd = 1)  # Transparent fill, black boundary
+# 
+# c <- tm_shape(GBR_ERA5_DHW_annual_max["y_1998"]) +
+#   tm_raster() +
+# tm_shape(gbr_shape_aerial_CRW) +
+#   tm_dots(size=0.1, fill="darkred") +
+# tm_shape(GBR_hull) +
+#   tm_polygons(col = "black", alpha = 0, lwd = 1)  # Transparent fill, black boundary
+# 
+# tmap_arrange(a,b,c)
+
+
+```
+

@@ -1,0 +1,11 @@
+---
+title: "Rapid intensification of coral bleaching on the Great Barrier Reef"
+date: "2026-01-28"
+editor: visual
+format:
+  html:
+    toc: false
+    code-fold: true
+---
+
+![](images/iiF04oQC.jpeg){fig-align="center"}

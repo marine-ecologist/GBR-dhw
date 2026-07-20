@@ -1,0 +1,32 @@
+# _quarto.yml
+
+project:
+  type: website
+  output-dir: ../docs
+
+website:
+  title: "GBR mass bleaching"
+  navbar:
+    left:
+      - text: "Methods"
+        icon: gear
+        href: methods.qmd
+      - text: "Results"
+        icon: bar-chart
+        href: manuscript.qmd
+      - text: "Supplementary"
+        icon: id-card
+        href: supplementary.qmd
+
+format:
+  html:
+    theme:
+      - cosmo
+      - spacelab
+    highlight: textmate
+    toc: true
+    toc-location: left
+    code-fold: true
+    
+execute:
+  cache: true

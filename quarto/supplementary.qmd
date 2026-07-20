@@ -1,0 +1,3475 @@
+---
+title: "Supplementary Material"
+date: "2026-01-28"
+editor: visual
+format:
+  html:
+    code-fold: true
+    toc: true
+    toc-depth: 4
+execute:
+  eval: true
+  echo: false
+  cache: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache.lazy = FALSE)
+```
+
+
+
+## Supplemenentary methods
+#### Bayesian spatial modelling of bleaching severity
+
+We modelled aerial bleaching severity as an ordinal response using a Bayesian
+spatial proportional-odds model fitted with the integrated nested Laplace
+approximation (INLA; Rue et al. 2009) and the stochastic partial differential
+equation (SPDE) approach to spatial random fields (Lindgren et al. 2011), as
+implemented in the R-INLA package (www.r-inla.org).
+
+#### Response variable
+
+Reef-level aerial bleaching scores were collapsed from the six-category survey
+scale into four ordered classes to harmonise observations across survey eras
+(1998–2002, 2016–2020, 2022–2025) and to ensure each class was adequately
+represented: class 1 (no bleaching; original score 0), class 2 (mild; scores
+1–2), class 3 (moderate; score 3) and class 4 (severe; scores 4–5). The ordinal
+structure was modelled with a proportional-odds (cumulative logit) likelihood
+(`family = "pom"`), which estimates a common set of covariate effects and
+class-specific cut-points (thresholds) on the latent logit scale. We verified
+that the estimated cut-points were strictly ordered after back-transformation
+from INLA's internal increment parameterisation (α1 = θ1; αk = α(k−1) + exp(θk)),
+confirming a valid cumulative ordering (α = −2.57, 0.46, 1.82).
+
+#### Linear predictor
+
+The latent linear predictor for reef i comprised a fixed-effect component, a
+continuous spatial random field, and a reef-level independent random effect:
+
+`η_i = β0 + β_DHW · DHW_i + β_year[t(i)] + β_int[t(i)] · DHW_i
++ u(s_i) + v_i`
+
+where DHW is the annual maximum Degree Heating Weeks experienced by the reef in
+the survey year, year is a categorical fixed effect for the eight mass-bleaching
+events (1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025; 1998 as reference), and
+the DHW × year interaction allows the dose–response slope to differ among events.
+The year main effects (β_year) estimate the contextual bleaching propensity at
+reference thermal stress, and the interaction terms (β_int) estimate event-
+specific modulation of the thermal dose–response. u(s_i) is the spatial field
+(below) and v_i a zero-mean Gaussian reef-level random effect (iid) capturing
+residual reef-specific heterogeneity.
+
+##### Spatial random field (SPDE)
+
+The spatial field u(s) was modelled as a zero-mean Gaussian random field with a
+Matérn covariance, approximated by the SPDE–GMRF representation on a constrained
+triangulated mesh. The study domain was defined by a concave hull
+(concaveman, concavity = 2) of the Great Barrier Reef Marine Park reef
+features, buffered by 10 km and simplified (10 km tolerance) to a smooth outer
+boundary. All spatial operations used the projected coordinate system UTM Zone
+55S (EPSG:32755), so all distances and ranges are reported in metres.
+
+The mesh was constructed with inla.mesh.2d using the domain boundary, an inner
+maximum edge length of 40 km and an outer (extension) edge of 800 km, with an
+offset of 5 km / 10 km for the inner and outer boundaries respectively. The
+Matérn smoothness was fixed at ν = 1 (α = 2). Observation and prediction
+locations were projected onto the mesh with the corresponding sparse projector
+matrices, and the spatial index was constructed with inla.spde.make.index.
+Observation and prediction data were combined in a single estimation stack
+(inla.stack).
+
+We placed penalised-complexity (PC) priors on the Matérn range and marginal
+standard deviation (Fuglstad et al. 2019; inla.spde2.pcmatern):
+P(range < 150 km) = 0.5 and P(σ > 3) = 0.01. PC priors shrink the field toward
+the simpler base model (no spatial effect / infinite range) unless the data
+support additional complexity, providing conservative, interpretable control of
+the spatial term.
+
+##### Priors on fixed effects
+
+We used weakly informative Gaussian priors on all fixed effects
+(mean 0, precision 0.001) except the intercept, for which we used a mildly
+informative prior (mean −2, precision 1) encoding the prior expectation of low
+baseline severe-bleaching probability at zero thermal stress. The cut-point
+hyperparameters used INLA's default priors, which yielded well-identified,
+strictly ordered thresholds.
+
+##### Inference
+
+Posterior inference used INLA's default integration strategy with a variational-
+Bayes correction for the latent field (`control.vb`). We retained model
+configurations (`config = TRUE`) to enable posterior sampling of the fixed
+effects via `inla.posterior.sample`, drawing from the joint posterior to
+propagate the full covariance among parameters when deriving quantities that
+combine multiple coefficients (e.g. event-specific dose–response curves and
+their thresholds). Model fit was assessed with the Deviance Information Criterion
+and the Watanabe–Akaike Information Criterion.
+
+##### Event-specific response curves
+To visualise how the bleaching response to thermal stress differed among events, we computed the full posterior distribution over ordinal classes across the observed DHW gradient (0–16 °C-weeks) for each event year. For a given linear predictor η, the probability of each class k was obtained from the cumulative logit form, `P(Y = k) = F(α_k − η) − F(α_{k−1} − η)`, with F the logistic CDF and α the ordered cut-points reconstructed from the model's increment-parameterised thresholds `(α_1 = θ_1; α_k = α_{k−1} + exp(θ_k))`. Linear predictors and their 95% credible bounds were taken from the model's posterior on the latent scale and propagated through this transformation. Curves were truncated at each event's maximum observed DHW so that predictions were not extended beyond the sampled thermal range; the 2025 event, surveyed only above ~7.5 °C-weeks, was treated as having no low-DHW support and is shown accordingly.
+
+##### Spatial prediction
+Spatially continuous predictions of bleaching probability were generated on a hexagonal grid (cell size 27.8 km) covering the reef domain. For each grid cell and event year we extracted the area-weighted maximum DHW and projected the cell centroids onto the fitted mesh, then predicted the latent linear predictor at these locations by appending the prediction grid to the estimation stack and re-running INLA with the hyperparameters fixed at the fitted posterior mode (control.mode), so that prediction did not re-estimate the model. The probability of severe bleaching was mapped as `P(Y = severe) = 1 − F(α_3 − η)` per cell, with the posterior mean displayed as the predicted surface. Because this probability is a saturating transformation of the latent field, we report predictive uncertainty on the latent (linear-predictor) scale — the 95% credible interval width of η — which reflects spatial information (mesh precision and survey density) without the additional curvature that the logistic transformation imposes near probabilities of 0.5. Grid-cell predictions carry substantial uncertainty; we therefore interpret the predicted surfaces at the regional scale, consistent with the spatial field's range, rather than at the level of individual cells.
+
+##### Sensitivity analyses
+
+Because the spatial range was a non-trivial fraction of the domain extent, and
+because the fixed-effect priors could in principle influence the year-level
+estimates that underpin our main inference, we conducted two pre-registered
+sensitivity analyses.
+
+_Spatial prior_. We compared the PC-prior specification above against a
+diffuse Matérn prior (`inla.spde2.matern` with default internal priors). The
+estimated practical range was robust to this choice (PC-prior posterior median
+≈ 357 km, 95% credible interval ≈ 219–530 km; diffuse-prior median ≈ 440 km),
+indicating that the regional-scale spatial structure is data-driven rather than
+an artefact of an unconstrained prior. The fixed-effect estimates were
+effectively unchanged between specifications (differences in the fourth decimal
+place), confirming that the inferred year-level effects are insensitive to the
+spatial prior.
+
+_Fixed-effect prior on the thermal covariate_. We compared a mildly
+informative prior on the DHW coefficient (mean 1, precision 1) against a weakly
+informative prior (mean 0, precision 0.001). The qualitative result — a
+monotonic increase in the year-level intercepts across recent events, with all
+recent-event credible intervals excluding zero — was invariant to this choice.
+The absolute magnitudes were sensitive to the DHW prior (e.g. the DHW main
+effect shifted from 0.61 to 0.82, and recent-year intercepts by ≈ 1.1–1.4 logit
+units), reflecting correlation between the thermal main effect and the year
+intercepts. We therefore adopt the weakly informative prior as the primary
+specification, as it is the more standard and defensible choice and yields
+directly interpretable estimates, and we report both fits.
+
+#### Reported spatial parameters
+
+Under the primary model, the spatial field operated at a regional scale
+(posterior median practical range ≈ 357 km, 95% CrI ≈ 219–530 km) with a
+substantial marginal standard deviation (≈ 3.1 logit units, 95% CrI ≈ 2.2–4.3),
+indicating a strong but spatially broad latitudinal gradient in bleaching
+propensity rather than fine reef-scale autocorrelation. The reef-level
+independent random effect had negligible variance once the spatial field and
+fixed effects were included (precision posterior median ≈ 1.3 × 10^4;
+variance ≈ 8 × 10^−5), indicating little residual reef-specific heterogeneity
+beyond the regional gradient, thermal dose and event effects. We report year
+effects net of this validated spatial structure.
+
+Analyses were conducted in `R` using `R-INLA` (vXX), `fmesher`, `sf`,
+`terra` and `exactextractr` for spatial data handling and DHW extraction, and
+`concaveman` for boundary construction.
+
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+
+library(tidyverse)
+library(terra)
+library(sf)
+library(dhw)
+library(patchwork)
+
+### load all datasets:
+GBR_CRW_SST <- rast("~/GBR-dhw/datasets/GBR_CoralTemp_SST.tif")
+GBR_CRW_DHW <- rast("~/GBR-dhw/datasets/GBR_CoralTemp_DHW.tif")
+
+GBR_OISST2_SST <- rast("~/GBR-dhw/datasets/GBR_OISST2_SST.tif")
+# GBR_OISST2_SSTA <- rast("~/GBR-dhw/datasets/GBR_OISST2_SSTA.tif")
+# GBR_OISST2_HS <- rast("~/GBR-dhw/datasets/GBR_OISST2_HS.tif")
+GBR_OISST2_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST2_DHW.tif")
+
+GBR_OISST_SST <- rast("~/GBR-dhw/datasets/GBR_OISST_SST.tif")
+GBR_OISST_SSTA <- rast("~/GBR-dhw/datasets/GBR_OISST_SSTA.tif")
+# GBR_OISST_HS <- rast("~/GBR-dhw/datasets/GBR_OISST_HS.tif")
+GBR_OISST_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST_DHW.tif")
+
+GBR_OISST2_SST <- rast("~/GBR-dhw/datasets/GBR_OISST2_SST.tif")
+GBR_OISST2_SSTA <- rast("~/GBR-dhw/datasets/GBR_OISST2_SSTA.tif")
+# GBR_OISST2_HS <- rast("~/GBR-dhw/datasets/GBR_OISST2_HS.tif")
+GBR_OISST2_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST2_DHW.tif")
+
+
+# gbr_reef_outline <- download_gbr_spatial(return="base")
+# gbr_reefs <- download_gbr_spatial(return="combined")
+# saveRDS(gbr_reef_outline, "~/GBR-dhw/datasets/gbr_reef_outline.rds")
+# saveRDS(gbr_reefs, "~/GBR-dhw/datasets/gbr_reefs.rds")
+
+gbr_reef_outline <- readRDS("~/GBR-dhw/datasets/gbr_reef_outline.rds")
+gbr_reefs <- readRDS("~/GBR-dhw/datasets/gbr_reefs.rds")
+
+aus_outline <- gbr_reef_outline |> slice_max(n=1, order_by=SHAPE_AREA)
+ausmap <- rnaturalearth::ne_countries(scale="large", country="Australia") |> 
+  st_transform(4326) |> 
+  st_crop(GBR_OISST_SSTA |> st_bbox()) 
+
+
+### calculate breakpoints:
+
+library(terra)
+library(Rbeast)
+library(tidyverse)
+
+GBR_OISST2_SST <- rast("~/GBR-dhw/datasets/GBR_OISST2_SST.tif")
+
+sst_ts <- terra::global(GBR_OISST2_SST, mean, na.rm = TRUE) %>%
+  mutate(date = as.Date(rownames(.))) |>
+  mutate(
+    year  = year(date),
+    month = month(date),
+    austral_year = if_else(month == 12L, year + 1L, year)  # Dec belongs to next year
+  ) %>%
+  filter(month %in% seq(1:3)) %>%
+  filter(austral_year > 1940, austral_year < 2026) %>%
+  group_by(austral_year) %>%
+  summarise(sst = mean(mean, na.rm = TRUE), .groups = "drop") %>%
+  rename(year = austral_year)
+
+sst_ts <- sst_ts %>% arrange(year)
+y_sst <- sst_ts$sst
+t_sst <- sst_ts$year
+
+beast_sst <- beast(
+  y_sst,
+  start  = t_sst[1],
+  deltat = 1,
+  season = "none",
+  print.progress = FALSE,
+  quiet = TRUE
+)
+
+cp_sst   <- beast_sst$trend$cp
+cppr_sst <- beast_sst$trend$cpPr
+if (is.null(cppr_sst)) cppr_sst <- beast_sst$trend$cpProb
+
+sst_cp_tbl <- tibble(cp = cp_sst, cp_prob = cppr_sst) %>%
+  mutate(year = as.integer(round(cp))) %>%
+  arrange(desc(cp_prob))
+
+breakpoints_sst <- sst_cp_tbl$cp[1:min(2, nrow(sst_cp_tbl))]
+breakyears_sst  <- sst_cp_tbl$year[1:min(2, nrow(sst_cp_tbl))]
+
+GBR_OISST2_SSTA <- rast("~/GBR-dhw/datasets/GBR_OISST2_SSTA.tif")
+
+ssta_ts <- terra::global(GBR_OISST2_SSTA, mean, na.rm = TRUE) %>%
+  mutate(date = as.Date(rownames(.))) |>
+  mutate(
+    year  = year(date),
+    month = month(date),
+    austral_year = if_else(month == 12L, year + 1L, year)  # Dec belongs to next year
+  ) %>%
+  filter(month %in% c(12, 1, 2, 3)) %>%
+  filter(austral_year > 1940, austral_year < 2026) %>%
+  group_by(austral_year) %>%
+  summarise(ssta = mean(mean, na.rm = TRUE), .groups = "drop") %>%
+  rename(year = austral_year)
+
+
+ssta_ts <- ssta_ts %>% arrange(year)
+y_ssta <- ssta_ts$ssta
+t_ssta <- ssta_ts$year
+
+beast_ssta <- beast(
+  y_ssta,
+  start  = t_ssta[1],
+  deltat = 1,
+  season = "none",
+  print.progress = FALSE,
+  quiet = TRUE
+)
+
+cp_ssta   <- beast_ssta$trend$cp
+cppr_ssta <- beast_ssta$trend$cpPr
+if (is.null(cppr_ssta)) cppr_ssta <- beast_ssta$trend$cpProb
+
+ssta_cp_tbl <- tibble(cp = cp_ssta, cp_prob = cppr_ssta) %>%
+  mutate(year = as.integer(round(cp))) %>%
+  arrange(desc(cp_prob))
+
+breakpoints_ssta <- ssta_cp_tbl$cp[1:min(2, nrow(ssta_cp_tbl))]
+breakyears_ssta  <- ssta_cp_tbl$year[1:min(2, nrow(ssta_cp_tbl))]
+
+
+GBR_OISST2_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST2_DHW.tif")
+
+sst_dhw <- terra::global(GBR_OISST2_DHW, mean, na.rm = TRUE) %>%
+  mutate(date = as.Date(rownames(.))) |>
+  mutate(
+    year  = year(date),
+    month = month(date),
+    austral_year = if_else(month == 12L, year + 1L, year)  # Dec belongs to next year
+  ) %>%
+  #filter(month %in% c(12, 1, 2, 3)) %>%
+  filter(austral_year > 1940, austral_year < 2026) %>%
+  group_by(austral_year) %>%
+  summarise(dhw = max(mean, na.rm = TRUE), .groups = "drop") %>%
+  rename(year = austral_year)
+ 
+
+sst_dhw <- sst_dhw %>% arrange(year)
+y_dhw <- sst_dhw$dhw
+t_dhw <- sst_dhw$year
+
+beast_dhw <- beast(
+  y_dhw,
+  start  = t_dhw[1],
+  deltat = 1,
+  season = "none",
+  print.progress = FALSE,
+  quiet = TRUE
+)
+
+cp_dhw   <- beast_dhw$trend$cp
+cppr_dhw <- beast_dhw$trend$cpPr
+if (is.null(cppr_dhw)) cppr_dhw <- beast_dhw$trend$cpProb
+
+sst_cp_tbl <- tibble(cp = cp_dhw, cp_prob = cppr_dhw) %>%
+  mutate(year = as.integer(round(cp))) %>%
+  arrange(desc(cp_prob))
+
+breakpoints_dhw <- sst_cp_tbl$cp[1:min(2, nrow(sst_cp_tbl))]
+breakyears_dhw  <- sst_cp_tbl$year[1:min(2, nrow(sst_cp_tbl))]
+
+
+
+### fit models to BEAST CPD output
+## SST
+segment_1_sst <- sst_ts |> filter(year < (breakpoints_sst[1]))
+segment_2_sst <- sst_ts |> filter(year > (breakpoints_sst[1]))
+segment_mean_1_sst <- data.frame(year = c(min(segment_1_sst$year), max(segment_1_sst$year)), sst = rep(mean(segment_1_sst$sst),2))
+segment_mean_2_sst <- data.frame(year = c(min(segment_2_sst$year), max(segment_2_sst$year)), sst = rep(mean(segment_2_sst$sst),2))
+
+model_1_sst <- lm(sst ~ year, data = segment_1_sst)
+model_2_sst <- lm(sst ~ year, data = segment_2_sst)
+
+#summary(model_1_sst)
+#summary(model_2_sst)
+
+segment_1_sst_rect <- segment_1_sst |>
+  summarise(
+    start_year = min(year),
+    end_year = max(year),
+    ymin = min(sst),
+    ymax = max(sst)
+  )
+
+segment_2_sst_rect <- segment_2_sst |>
+  summarise(
+    start_year = min(year),
+    end_year = max(year),
+    ymin = min(sst),
+    ymax = max(sst)
+  )
+
+segment_1_sst_mean <- segment_1_sst |>
+  summarise(
+    year = mean(year),
+    sst = mean(sst)
+  )
+segment_2_sst_mean <- segment_2_sst |>
+  summarise(
+    year = mean(year),
+    sst = mean(sst)
+  )
+
+
+## SSTA
+
+segment_1_ssta <- ssta_ts |> filter(year < (breakpoints_ssta[2]))
+segment_2_ssta <- ssta_ts  |> filter(year > (breakpoints_ssta[2])) |> 
+                              filter(year < (breakpoints_ssta[1]))
+segment_3_ssta <- ssta_ts |> filter(year > (breakpoints_ssta[1]))
+segment_mean_1_ssta <- data.frame(year = c(min(segment_1_ssta$year), max(segment_1_ssta$year)), ssta = rep(mean(segment_1_ssta$ssta),2))
+segment_mean_2_ssta <- data.frame(year = c(min(segment_2_ssta$year), max(segment_2_ssta$year)), ssta = rep(mean(segment_2_ssta$ssta),2))
+segment_mean_3_ssta <- data.frame(year = c(min(segment_3_ssta$year), max(segment_3_ssta$year)), ssta = rep(mean(segment_3_ssta$ssta),2))
+
+model_1_ssta <- lm(ssta ~ year, data = segment_1_ssta)
+model_2_ssta <- lm(ssta ~ year, data = segment_2_ssta)
+model_3_ssta <- lm(ssta ~ year, data = segment_3_ssta)
+
+#summary(model_1_ssta)
+#summary(model_2_ssta)
+#summary(model_3_ssta)
+
+segment_1_ssta_rect <- segment_1_ssta |>
+  summarise(
+    start_year = min(year),
+    end_year = max(year),
+    ymin = min(ssta),
+    ymax = max(ssta)
+  )
+
+segment_2_ssta_rect <- segment_2_ssta |>
+  summarise(
+    start_year = min(year),
+    end_year = max(year),
+    ymin = min(ssta),
+    ymax = max(ssta)
+  )
+
+segment_3_ssta_rect <- segment_3_ssta |>
+  summarise(
+    start_year = min(year),
+    end_year = max(year),
+    ymin = min(ssta),
+    ymax = max(ssta)
+  )
+
+segment_1_ssta_mean <- segment_1_ssta |>
+  summarise(
+    year = mean(year),
+    ssta = mean(ssta)
+  )
+segment_2_ssta_mean <- segment_2_ssta |>
+  summarise(
+    year = mean(year),
+    ssta = mean(ssta)
+  )
+segment_3_ssta_mean <- segment_3_ssta |>
+  summarise(
+    year = mean(year),
+    ssta = mean(ssta)
+  )
+
+
+
+# plot main outputs
+
+main_dhw <- ggplot() + theme_bw() +
+ geom_vline(xintercept=c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025), linewidth=2.8, alpha=0.1, color="coral4") +
+ geom_col(data=sst_dhw, aes(x=year, y=dhw, fill=dhw), color="black", linewidth=0.25, show.legend=FALSE) +
+ scale_fill_distiller(palette="YlOrRd", direction=1) + 
+ #scale_fill_distiller(palette="RdBu", direction=-1) + 
+ xlab("") + ylab("Degree Heating Weeks") +
+ scale_y_continuous(limits=c(0,12), breaks=seq(0,10,2)) + 
+ scale_x_continuous(limits=c(1940,2026), breaks=seq(1940,2025,10)) +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_blank())  # Drop minor x grids) 
+
+
+sst_break <- ggplot() + theme_bw() +
+  geom_rect(data = segment_1_sst_rect, 
+            aes(xmin = start_year, xmax = end_year, ymin = ymin, ymax = ymax), 
+            fill="darkslategray4", alpha=0.1) + 
+  geom_rect(data = segment_2_sst_rect, 
+            aes(xmin = start_year, xmax = end_year, ymin = ymin, ymax = ymax), 
+            fill="coral2", alpha=0.1) + 
+  geom_line(data = segment_1_sst, 
+            aes(x = year, y = sst), 
+            color="darkgrey", linewidth=0.2) +
+  geom_point(data = segment_1_sst, 
+             aes(x = year, y = sst), 
+             fill="darkslategray4", shape=21, size=1.5, show.legend=FALSE) +
+  geom_line(data = segment_2_sst, 
+            aes(x = year, y = sst), 
+            color="darkgrey",linewidth=0.2) +
+  geom_point(data = segment_2_sst, 
+             aes(x = year, y = sst), 
+             fill="coral2", shape=21, size=1.5, show.legend=FALSE) +
+  scale_fill_distiller(palette="RdBu") +
+  geom_vline(xintercept = breakpoints_sst[1], color = "darkgrey", linewidth=2, alpha=0.4) +
+  geom_smooth(data = segment_2_sst, 
+              aes(x = year, y = sst), 
+             method = "lm", se = TRUE, linetype="solid", 
+             color = "indianred4",  fill = "coral2", linewidth = 0.5, alpha=0.05) +
+    geom_line(data=segment_mean_1_sst, aes(x=year, y=sst), linewidth=0.25, linetype="solid") +
+  labs(x = "", y = "SST (°C)") +
+  theme(
+    axis.title.x=element_blank(),
+    axis.text.x=element_blank(),
+    axis.ticks.x=element_blank(),
+    axis.text=element_text(size=6),
+    axis.title=element_text(size=7),
+    axis.ticks = element_line(linewidth = 0.25, colour = "darkgrey"),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    panel.border = element_rect(linewidth = 0, fill = "transparent"), 
+    panel.grid.major.x = element_blank(), 
+    panel.grid.minor.x = element_blank()) 
+
+
+ssta_break <- ggplot() +
+  theme_bw() +
+  geom_rect(
+    data = segment_1_ssta_rect,
+    aes(xmin = start_year, xmax = end_year, ymin = ymin, ymax = ymax),
+   fill="darkslategray4", alpha=0.1
+  ) +
+  geom_rect(data = segment_2_ssta_rect, 
+            aes(xmin = start_year, xmax = end_year, ymin = ymin, ymax = ymax), 
+            fill = "coral2", alpha = 0.1) +
+  geom_rect(
+    data = segment_3_ssta_rect,
+    aes(xmin = start_year, xmax = end_year, ymin = ymin, ymax = ymax),
+    fill = "indianred4", alpha = 0.1
+  ) +
+  geom_line(data = segment_1_ssta, aes(x = year, y = ssta), color = "darkgrey", linewidth = 0.2) +
+  geom_point(data = segment_1_ssta, aes(x = year, y = ssta), fill = "darkslategray3", shape = 21, alpha = 1, size = 1.5, show.legend = FALSE) +
+  geom_line(data = segment_2_ssta, aes(x = year, y = ssta), color = "darkgrey", linewidth = 0.2) +
+  geom_point(data = segment_2_ssta, aes(x = year, y = ssta), fill = "indianred1", shape = 21, alpha = 1, size = 1.5, show.legend = FALSE) +
+  geom_line(data = segment_3_ssta, aes(x = year, y = ssta), color = "darkgrey", linewidth = 0.2) +
+  geom_point(data = segment_3_ssta, aes(x = year, y = ssta), fill = "indianred4", shape = 21, alpha = 1, size = 1.5, show.legend = FALSE) +
+  scale_fill_distiller(palette = "RdBu") +
+  scale_x_continuous(limits = c(1940, 2026)) +
+  scale_y_continuous(limits = c(-0.6, 1.2)) +
+  geom_vline(xintercept = breakpoints_ssta[1], color = "darkgrey", linewidth=2, alpha=0.4) +
+  geom_vline(xintercept = breakpoints_ssta[2], color = "darkgrey", linewidth=2, alpha=0.4) +
+  geom_line(data=segment_mean_1_ssta, aes(x=year, y=ssta), linewidth=0.25, linetype="solid") +
+  geom_line(data=segment_mean_2_ssta, aes(x=year, y=ssta), linewidth=0.25, linetype="solid") +
+  geom_line(data=segment_mean_3_ssta, aes(x=year, y=ssta), linewidth=0.25, linetype="solid") +
+  labs(x = "", y = "SSTA (°C)") +# scale_y_continuous(limits=c(-0.5, 1.5)) +
+  theme(
+    axis.text=element_text(size=6),
+    axis.title=element_text(size=7),
+    axis.ticks = element_line(linewidth = 0.25, colour = "darkgrey"),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    panel.border = element_rect(linewidth = 0, fill = "transparent"), # Change border thickness
+    panel.grid.minor.y = element_blank(), # Drop minor y grids
+    panel.grid.major.x = element_blank(), # Drop major x grids
+    panel.grid.minor.x = element_blank(),
+    plot.margin = margin(t = 10, r = 10, b = 0, l = 10)) 
+
+
+
+inset <- sst_break / ssta_break + theme(plot.margin = margin(-1, 1, 0, 0))
+
+df.labels <- data.frame(date=c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025),
+                        label=c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025), 
+                        dhw = rep(11.8, 8))
+
+```
+
+```{r}
+#| message: false
+#| warning: false
+
+######################################################################-
+# Rate of change positive SST Anomlies 1981-2024 
+######################################################################-
+
+# load OISST
+library(sf)
+
+
+# Define the function to calculate the slope across the entire time series
+slope <- terra::app(GBR_OISST_SSTA, function(sst_ts) {
+  if (sum(!is.na(sst_ts)) > 1) {  # Ensure there are more than one non-NA values
+    df <- data.frame(sst = sst_ts, time = seq_along(sst_ts))  # Create a time series index
+    lm_fit <- stats::lm(sst ~ time, data = df)  # Fit linear model (sst as response, time as predictor)
+    return(coef(lm_fit)[2])  # Return the slope (the coefficient for time)
+  } else {
+    return(NA)  # Return NA if not enough data
+  }
+})
+
+annual_rate_of_change <- slope * 365.25 *10
+
+# Create grid cells covering the raster extent
+grid_cells <- st_bbox(c(xmin = xmin(annual_rate_of_change),
+  ymin = ymin(annual_rate_of_change),
+  xmax = xmax(annual_rate_of_change),
+  ymax = ymax(annual_rate_of_change)),
+  crs = st_crs(4326)) |>
+st_as_sfc() |>
+st_make_grid(cellsize = res(GBR_OISST_SSTA)[1], what = "polygons")
+#grid_cells <- st_sf(id = 1:length(grid_cells), geometry = grid_cells)
+
+
+# Create a polygon of non-NA cells in GBR_OISST_SSTA
+mask <- mask(annual_rate_of_change, annual_rate_of_change >= 0.05)
+mask[!is.na(mask)] <- 1
+
+mask_points <- as.points(mask, na.rm = TRUE)
+mask_sf <- st_as_sf(mask_points)
+projected_crs <- "+proj=utm +zone=55 +south +datum=WGS84 +units=m +no_defs"
+mask_projected <- st_transform(mask_sf, crs = projected_crs)
+resolution_meters <- 25000  # 0.25 
+mask_buffered <- mask_projected |>
+  st_buffer(dist = resolution_meters/2, endCapStyle = "SQUARE")
+mask_polygons <- st_transform(mask_buffered, crs = st_crs(mask_sf))
+
+
+# Define the numeric breaks for the values and color scale
+anom_numeric_breaks <- c(0.1, 0.15, 0.2, 0.25, 0.3)  # Numeric values to map colors
+anom_colour_breaks <- c("#ffffff", "#f4a6a6", "#e03f3f", "#680202")  # Colors to use at these breaks
+
+rate_change_plot <- ggplot() + 
+  theme_bw() + 
+  tidyterra::geom_spatraster(data = annual_rate_of_change,  interpolate = FALSE, show.legend = TRUE) +
+  scale_fill_gradientn(
+    limits = c(0.1, 0.3),
+    name = "SST anom",
+    na.value = "transparent",
+    breaks = anom_numeric_breaks,       # Set custom breaks for the color scale
+    labels = anom_numeric_breaks,       # Use the same values for labels
+    colours = anom_colour_breaks,       # Apply colors directly
+    values = scales::rescale(anom_numeric_breaks, from = c(0.1, 0.3))  # Rescale numeric breaks to match color scale
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1),
+    plot.title = element_text(size = 7, hjust = 0.5),
+    legend.position = c(0.95, 0.95), 
+    legend.justification = c(1, 1),  
+    legend.text = element_text(size = 4, margin = margin(t = 0, r = 1, b = 0, l = 1.5)),  # Reduce margin around text
+    legend.title = element_text(size = 5),  # Scale legend title
+    legend.key.size = unit(0.5, "lines"),  # Scale legend box size
+    legend.background = element_rect(fill = "white", color = NA), 
+    legend.margin = margin(2.1, 2.1, 2.1, 2.1)
+  ) +
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) + 
+  geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  labs(title = "Decadal Rate of Change \nin SST anom (°C) 1982-2024", fill = "SST") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+######################################################################-
+# Maximum Degree Heating Week (1981-2025)
+######################################################################-
+
+
+# Calculate the maximum DHW across all layers
+max_DHW <- max(GBR_OISST_DHW, na.rm = TRUE)
+
+# Define the numeric breaks for the values
+dhw_numeric_breaks <- c(4, 8, 12, 16, 20)  # Numeric values to map colors
+#dhw_colour_breaks <- c(, "#eddf8c", "#ff9a15", "#820000")  # Colors to use at these breaks
+dhw_colour_breaks <- c( "#a5d3e5", "#eddf8c",  "#d47a04",  "#4d0101")  # Colors to use at these breaks
+
+
+
+# Plot
+max_DHW_plot <- ggplot() + 
+  theme_bw() + 
+  ggtitle("Max DHW 1982-2025") +
+  tidyterra::geom_spatraster(data = max_DHW, interpolate = FALSE, show.legend = TRUE) + 
+  scale_fill_gradientn(
+    limits = c(4, 20),
+    name = "Max DHW",
+    na.value = "transparent",
+    breaks = dhw_numeric_breaks,       # Set custom breaks for the color scale
+    labels = dhw_numeric_breaks,       # Use the same values for labels
+    colours = dhw_colour_breaks,       # Apply colors directly
+    values = scales::rescale(dhw_numeric_breaks, from = c(4, 20))  # Rescale numeric breaks to match color scale
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1),
+    plot.title = element_text(size = 7, hjust = 0.5),
+    axis.text.y = element_blank(),
+    legend.position = c(0.95, 0.95),
+    legend.justification = c(1, 1),  
+    legend.text = element_text(size = 4, margin = margin(t = 0, r = 1, b = 0, l = 1.5)),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "lines"),
+    legend.background = element_rect(fill = "white", color = NA), 
+    legend.margin = margin(2.1, 2.1, 2.1, 2.1)
+  ) +
+  geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  labs(title = "Maximum DHW \nexposure (1982-2025)", fill = "DHW") +
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1)  
+
+######################################################################-
+# Warmest year (DHW)
+######################################################################-
+
+
+# Extract the time information (days) and convert to years
+time_info <- time(GBR_OISST_DHW)
+years <- as.numeric(format(time_info, "%Y"))
+
+# Aggregate daily data to annual maximum DHW
+maxDHW_annual <- tapp(GBR_OISST_DHW, index = years, fun = max, na.rm = TRUE)
+
+df <- as.data.frame(maxDHW_annual, xy = TRUE)
+colnames(df) <- gsub("^X", "", colnames(df))
+
+df_long <- df %>%
+  pivot_longer(cols = -c(x,y), 
+               names_to = "year", 
+               values_to = "dhw") 
+
+df_long_max <- df_long %>%
+  group_by(x, y) %>%
+  mutate(max_dhw = max(dhw, na.rm = TRUE),  # Find the max DHW for each group
+         dhw = ifelse(dhw == max_dhw, dhw, NA),  # Set non-max dhw values to NA
+         year = ifelse(!is.na(dhw), year, NA)) %>%  # Set non-max year values to NA
+  dplyr::select(-max_dhw) |>   # Remove the temporary max_dhw column
+  drop_na(year) |> 
+  arrange(year)
+
+df_wide_max <- df_long_max %>%
+  pivot_wider(names_from = year, values_from = dhw) %>%
+  mutate(across(`1982`:`2025`, ~ as.factor(ifelse(!is.na(.), cur_column(), NA))))
+
+year_max <- rast(df_wide_max, type = "xyz")
+
+# Use the `app` function to merge the layers, keeping the first non-NA value
+flattened_raster <- app(year_max, fun = function(x) {
+  first_non_na <- x[!is.na(x)]
+  if (length(first_non_na) > 0) {
+    return(first_non_na[1])  # Return the first non-NA value
+  } else {
+    return(0)  # If all values are NA, return NA
+  }
+})
+
+values(flattened_raster) <- as.factor(values(flattened_raster))
+flattened_raster <- droplevels(flattened_raster) # Drop NA factor levels
+# Set the CRS if needed
+crs(flattened_raster) <- "EPSG:4326"
+
+
+library(RColorBrewer)
+years <- as.character(1982:2025)
+n_colors <- length(years)
+#spectral_palette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))(n_colors)
+spectral_palette <- colorRampPalette(c(rev(brewer.pal(6, "Greens")), rev(brewer.pal(8, "Blues")), (brewer.pal(8, "Reds"))))(n_colors)
+year_colors <- setNames(spectral_palette, years)
+# 
+# max_dhw_year_plot <- ggplot() + theme_bw() + 
+#   ggtitle("") +
+#   tidyterra::geom_spatraster(data=flattened_raster, interpolate=FALSE, show.legend=TRUE) +
+#   scale_fill_manual(values = year_colors, na.value = "transparent", guide = guide_legend(na.translate = FALSE)) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) +
+#   geom_sf(data=ausmap, fill="#E2E7D4", alpha=1) + 
+#   labs(title="Maximum DHW \nexposure (year)", fill="year") +
+#   theme(plot.title = element_text(size=6, hjust = 0.5),
+#         axis.text.y = element_blank(),
+#         legend.position = c(0.95, 0.95), 
+#         legend.justification = c(1, 1),  
+#         legend.text = element_text(size = 3, margin = margin(t = 0, r = 1, b = 0, l = 1.5)),  # Reduce margin around text
+#         legend.title = element_text(size = 4),  # Scale legend title to 35%
+#         legend.key.size = unit(0.25, "lines"),  # Scale legend box size to 35%
+#         legend.background = element_rect(fill = "white", color = NA), 
+#         legend.margin = margin(1,1,1,1)) +
+#   geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1)  
+# 
+
+######################################################################- 
+# Frequency of Degree Heating Weeks exceeding 6DHW
+######################################################################-
+
+dhw_year_max <- GBR_OISST_DHW %>%
+  tapp(index = format(time(.), "%Y"), fun = max, na.rm = TRUE)
+
+
+# Create hull polygon
+hull <- data.frame(lat = c(-9, -25, -25), 
+                   lon = c(136, 136, 151.5)) |> 
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326) |> 
+  st_combine() |>            
+  st_convex_hull() |>        
+  st_cast("POLYGON")  
+
+# Create outline polygon and remove intersection with hull
+ausoutlinefill <- ausmap |> 
+  st_cast("MULTILINESTRING") |> 
+  st_cast("POLYGON") |> 
+  dplyr::select(scalerank) |>  
+  st_difference(hull)  # Get parts outside the hull
+
+
+ausoutline <- ausmap |>
+  st_cast("MULTILINESTRING") |>
+  dplyr::select(scalerank) |>
+  st_crop(st_as_sfc(st_bbox(c(xmin = 142.05, ymin = -24.75, xmax = 154.00, ymax = -8.75), crs = 4326))) |>
+  st_cast("LINESTRING") |>
+  mutate(length_km = st_length(geometry) / 1000) |>
+  arrange(desc(length_km))
+
+ausoutline <- ausoutline[1,]
+
+######################################################################- 
+# Frequency of Degree Heating Weeks (1986-1995)
+######################################################################-
+
+#dhw_subset_first <- subset(dhw_year_max, layer_names)
+dhw_subset_first <- subset(dhw_year_max, paste0("X", seq(1986, 1995, 1)))
+dhw_exceeding_6_first_subset <- app(dhw_subset_first, fun = function(x) {
+  sum(x > 6, na.rm = TRUE)
+})
+dhw_exceeding_6_first_subset <- subst(dhw_exceeding_6_first_subset, from = 0, to = NA)
+values(dhw_exceeding_6_first_subset) <- values(dhw_exceeding_6_first_subset) |> as.factor()
+# 
+# 
+# 
+# dhw_exceedance_1985_1994 <- ggplot() + theme_bw() + 
+#   tidyterra::geom_spatraster(data=dhw_exceeding_6_first_subset, interpolate=FALSE, show.legend=FALSE) +
+#   #scale_fill_distiller(palette="Spectral", na.value="transparent", breaks=seq(0,7,1), limits = c(0, 7)) +
+#   scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7), 
+#                   na.value = "transparent",
+#                   guide = guide_legend(na.translate = FALSE)) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) +
+#   labs (title="Bleaching threshold exceedance \nfrequency 1985-1995", fill="n \nevents", ylab=NULL) +
+#   geom_sf(data=ausmap, fill="#E2E7D4", alpha=1) +
+#    theme(plot.title = element_text(size=6, hjust = 0.5),
+#         axis.text.y = element_blank(),
+#         legend.position = c(0.95, 0.95), 
+#         legend.justification = c(1, 1),  
+#         legend.text = element_text(size = 3, margin = margin(t = 0, r = 1, b = 0, l = 1)),  # Reduce margin around text
+#         legend.title = element_text(size = 4),  # Scale legend title to 35%
+#         legend.key.size = unit(0.25, "lines"),  # Scale legend box size to 35%
+#         legend.background = element_rect(fill = "white", color = NA), 
+#         legend.margin = margin(0.1,0.1,0.1,0.1))  +
+#   geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1)  
+# 
+
+
+######################################################################- 
+# Frequency of Degree Heating Weeks (1996-2005)
+######################################################################-
+
+
+dhw_subset_second <- subset(dhw_year_max, paste0("X", seq(1996, 2005, 1)))
+dhw_exceeding_6_second_subset <- app(dhw_subset_second, fun = function(x) {
+  sum(x > 6, na.rm = TRUE)
+})
+dhw_exceeding_6_second_subset <- subst(dhw_exceeding_6_second_subset, from = 0, to = NA)
+values(dhw_exceeding_6_second_subset) <- values(dhw_exceeding_6_second_subset) |> as.factor()
+
+# 
+# dhw_exceedance_1995_2004 <- ggplot() + theme_bw() + 
+#   tidyterra::geom_spatraster(data=dhw_exceeding_6_second_subset, interpolate=FALSE, show.legend=FALSE) +
+#   #scale_fill_distiller(palette="Spectral", na.value="transparent", breaks=seq(0,7,1), limits = c(0, 7)) +
+#   scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7), 
+#                   na.value = "transparent",
+#                   guide = guide_legend(na.translate = FALSE)) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) +
+#   labs (title="Bleaching threshold exceedance \nfrequency 1995-2005", fill="n \nevents", ylab=NULL) +
+#   geom_sf(data=ausmap, fill="#E2E7D4", alpha=1) +
+#    theme(plot.title = element_text(size=6, hjust = 0.5),
+#         axis.text.y = element_blank(),
+#         legend.position = c(0.95, 0.95), 
+#         legend.justification = c(1, 1),  
+#         legend.text = element_text(size = 3, margin = margin(t = 0, r = 1, b = 0, l = 1)),  # Reduce margin around text
+#         legend.title = element_text(size = 4),  # Scale legend title to 35%
+#         legend.key.size = unit(0.25, "lines"),  # Scale legend box size to 35%
+#         legend.background = element_rect(fill = "white", color = NA), 
+#         legend.margin = margin(0.1,0.1,0.1,0.1))  +
+#   geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1)  
+
+######################################################################- 
+# Frequency of Degree Heating Weeks (2006-2015)
+######################################################################-
+
+
+dhw_subset_third <- subset(dhw_year_max, paste0("X", seq(2006, 2015, 1)))
+dhw_exceeding_6_third_subset <- app(dhw_subset_third, fun = function(x) {
+  sum(x > 6, na.rm = TRUE)
+})
+dhw_exceeding_6_third_subset <- subst(dhw_exceeding_6_third_subset, from = 0, to = NA)
+values(dhw_exceeding_6_third_subset) <- values(dhw_exceeding_6_third_subset) |> as.factor()
+# 
+# dhw_exceedance_2005_2014 <- ggplot() + theme_bw() + 
+#   tidyterra::geom_spatraster(data=dhw_exceeding_6_third_subset, interpolate=FALSE, show.legend=FALSE) +
+#   #scale_fill_distiller(palette="Spectral", na.value="transparent", breaks=seq(0,7,1), limits = c(0, 7)) +
+#   scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7), 
+#                   na.value = "transparent",
+#                   guide = guide_legend(na.translate = FALSE)) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1)) +
+#   labs (title="Bleaching threshold exceedance \nfrequency 2005-2015", fill="n \nevents", ylab=NULL) +
+#   geom_sf(data=ausmap, fill="#E2E7D4", alpha=1) +
+#    theme(plot.title = element_text(size=6, hjust = 0.5),
+#         axis.text.y = element_blank(),
+#         legend.position = c(0.95, 0.95), 
+#         legend.justification = c(1, 1),  
+#         legend.text = element_text(size = 3, margin = margin(t = 0, r = 1, b = 0, l = 1)),  # Reduce margin around text
+#         legend.title = element_text(size = 4),  # Scale legend title to 35%
+#         legend.key.size = unit(0.25, "lines"),  # Scale legend box size to 35%
+#         legend.background = element_rect(fill = "white", color = NA), 
+#         legend.margin = margin(0.1,0.1,0.1,0.1))  +
+#   geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1)  
+# 
+
+######################################################################- 
+# Frequency of Degree Heating Weeks (2016-2025)
+######################################################################-
+
+dhw_subset_last <- subset(dhw_year_max, paste0("X", seq(2016, 2025, 1)))
+dhw_exceeding_6_subset_last <- app(dhw_subset_last, fun = function(x) {
+  sum(x > 6, na.rm = TRUE)
+})
+dhw_exceeding_6_subset_last <- subst(dhw_exceeding_6_subset_last, from = 0, to = NA)
+values(dhw_exceeding_6_subset_last) <- values(dhw_exceeding_6_subset_last) |> as.factor()
+
+# 
+# 
+# dhw_exceedance_2015_2024 <- ggplot() + theme_bw() + 
+#   tidyterra::geom_spatraster(data=dhw_exceeding_6_subset_last, interpolate=FALSE) +
+#   #scale_fill_distiller(palette="Spectral", na.value="transparent", breaks=seq(0,7,1), limits = c(0, 7)) +
+#   scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7), 
+#                   na.value = "transparent",
+#                   guide = guide_legend(na.translate = FALSE)) +
+#   geom_sf(data=ausmap, fill="#E2E7D4", alpha=1) + 
+#   labs(title="Bleaching threshold exceedance \nfrequency 2015-2025", ylab = "", fill="n \nevents") + 
+#   theme(plot.title = element_text(size=6, hjust = 0.5),
+#         axis.text.x = element_text(angle = 90, vjust = 1, hjust=1, size=8),
+#         axis.text.y = element_blank(),
+#         axis.title.y = element_blank(),
+#         legend.position = c(0.95, 0.95), 
+#         legend.justification = c(1, 1),  
+#         legend.text = element_text(size = 4, margin = margin(t = 0, r = 1, b = 0, l = 1.5)),  # Reduce margin around text
+#         legend.title = element_text(size = 5),  # Scale legend title to 35%
+#         legend.key.size = unit(0.3, "lines"),  # Scale legend box size to 35%
+#         legend.background = element_rect(fill = "white", color = NA), 
+#         legend.margin = margin(0.1,0.1,0.1,0.1))  +
+#   geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1)  
+
+
+
+
+# hack to set extent with lat
+raster_df <- as.data.frame(annual_rate_of_change, xy = TRUE, na.rm = TRUE)
+current_extent <- ext(annual_rate_of_change)
+longitude_range <- xmax(current_extent) - xmin(current_extent)
+extended_xmax <- xmax(current_extent) +  longitude_range*1.5  # Extend 3x the longitude range
+
+mask_polygons_border <- as.polygons(mask, dissolve = TRUE)
+mask_sf <- st_as_sf(mask_polygons_border)
+mask_border <- st_union(mask_sf)
+
+
+
+
+
+
+GBR_OISST2_SST <- rast("~/GBR-dhw/datasets/GBR_OISST2_SST.tif")
+
+
+# # maxSST per year for OISST2 in rast
+gbr_OISST2_dhw_annual_max <- summarise_raster(GBR_OISST2_DHW, index = "years", fun = max, na.rm = TRUE, overwrite=TRUE)
+
+
+
+# hack to set extent with lat
+raster_df <- as.data.frame(annual_rate_of_change, xy = TRUE, na.rm = TRUE)
+current_extent <- ext(annual_rate_of_change)
+longitude_range <- xmax(current_extent) - xmin(current_extent)
+extended_xmax <- xmax(current_extent) +  longitude_range  # Extend 3x the longitude range
+
+mask_polygons_border <- as.polygons(mask, dissolve = TRUE)
+mask_sf <- st_as_sf(mask_polygons_border)
+mask_border <- st_union(mask_sf)
+
+
+################## 1. rate change SSTA ########################-
+rate_change_plot <- ggplot() + 
+  theme_bw() +
+  
+  # Y-axis with exactly 6 evenly spaced labels
+ scale_y_continuous(limits = c(-25, -9),
+                     breaks=seq(-25, -9, 2),
+                     labels = paste0(seq(-25, -9, 2), "°N"))  +
+
+  # X-axis with rotated labels
+  scale_x_continuous(
+    limits = c(xmin(current_extent), extended_xmax), 
+    breaks = seq(140, 152, 2),
+    labels = paste0(seq(140, 152, 2), "°E")
+  ) +
+
+  # Plot components
+  tidyterra::geom_spatraster(data = annual_rate_of_change, interpolate = FALSE, show.legend = TRUE) +
+  scale_fill_gradientn(
+    guide = guide_colorbar(
+      frame.colour = "black",
+      frame.linewidth = 0.2,
+      ticks.colour = "black",
+      ticks.linewidth = 0.2
+    ),
+    limits = c(0.175, 0.3),
+    name = "SSTA",
+    na.value = "transparent",
+    breaks = anom_numeric_breaks,
+    labels = anom_numeric_breaks,
+    colours = anom_colour_breaks,
+    values = scales::rescale(anom_numeric_breaks, from = c(0.1, 0.3))
+  ) +
+
+  # Theme settings
+  theme(
+    title = NULL,
+    axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5, hjust = 1),  # Rotate x-axis labels
+    axis.text.y = element_text(size = 6),
+    legend.position = c(0.28, 0.97),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 6),
+    legend.key.size = unit(0.5, "lines"),
+    legend.background = element_rect(fill = "transparent", color = NA), 
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")
+  ) +
+
+  # Overlay other geometries
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) + 
+  geom_sf(data = mask_border, fill = NA, linewidth = 0.5, alpha = 1) +
+  geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  
+  # Label settings
+  labs(fill = "SST")
+
+
+
+################## 2. max DHW ########################-
+
+max_DHW_plot <- ggplot() + 
+  theme_void() +
+  
+  # Spatial raster layer
+  tidyterra::geom_spatraster(data = max_DHW, interpolate = FALSE, show.legend = TRUE) +
+  
+  # Color scale for DHW
+  scale_fill_gradientn(
+    guide = guide_colorbar(
+      frame.colour = "black",
+      frame.linewidth = 0.2,
+      ticks.colour = "black",
+      ticks.linewidth = 0.2
+    ),
+    limits = c(4, 20),
+    name = bquote(DHW[max]),
+    na.value = "transparent",
+    breaks = dhw_numeric_breaks,
+    labels = dhw_numeric_breaks,
+    colours = dhw_colour_breaks,
+    values = scales::rescale(dhw_numeric_breaks, from = c(4, 20))
+  ) +
+
+  # Theme and legend styling
+  theme(
+    title = NULL,
+    axis.text.x = NULL,
+    legend.position = c(0.5, 0.97),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 6),
+    legend.key.size = unit(0.5, "lines"),
+    legend.background = element_rect(fill = "transparent", color = NA),
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")
+  ) +
+  
+  # Spatial data layers
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) +
+  geom_sf(data = mask_border, fill = NA, linewidth = 0.5, alpha = 1) +
+  
+  # Labels
+  labs(fill = "DHW")
+
+
+
+################## 3. max DHW ##################-
+
+max_dhw_year_plot <- ggplot() + 
+  
+  theme_void() +
+  
+  # Spatial raster layer
+  tidyterra::geom_spatraster(data = flattened_raster, interpolate = FALSE, show.legend = TRUE) +
+
+  # Manual color scale for year
+  scale_fill_manual(
+    values = year_colors,
+    na.value = "transparent",
+    guide = guide_legend(na.translate = FALSE)
+  ) +
+  
+  # Theme and legend styling
+  theme(
+    title = NULL,
+    axis.text.x =NULL,
+    legend.position = c(0.78, 0.98),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 6),
+    legend.key.size = unit(0.4, "lines"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")
+  ) +
+  
+  # Legend layout (2 columns)
+  guides(fill = guide_legend(ncol = 2)) +
+
+  # Spatial data layers
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) +
+  geom_sf(data = mask_border, fill = NA, linewidth = 0.5, alpha = 1) +
+
+  # Labels
+  labs(title = "", fill = "Year")
+
+
+
+
+
+
+
+################## 1. dhw_exceedance_1985_1994 ##################-
+
+
+
+dhw_exceedance_1985_1994 <- ggplot() +
+  theme_bw() +
+  scale_y_continuous(limits = c(-25, -9),
+                     breaks=seq(-25, -9, 2),
+                     labels = paste0(seq(-25, -9, 2), "°N"))  +
+  scale_x_continuous(limits = c(xmin(current_extent), extended_xmax),
+                     breaks=seq(140, 152, 2),
+                     labels = paste0(seq(140, 152, 2), "°E"))  +
+  tidyterra::geom_spatraster(data = dhw_exceeding_6_first_subset,  interpolate = FALSE, show.legend = FALSE) +
+  scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7),
+                    na.value = "transparent"
+                    #guide = guide_legend(na.translate = FALSE),
+                  ) +
+  theme(
+    title = NULL,
+    axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5, hjust = 1),  # Rotate x-axis labels
+    axis.text.y = element_text(size = 6),
+    legend.position = c(0.75, 0.98),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 7),
+    legend.key.size = unit(0.75, "lines"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")  # Add black border around legend keys
+  ) +
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) +
+  geom_sf(data = mask_border, fill = NA, linewidth=0.5, alpha = 1) +
+  geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  labs(fill = "n")
+
+################## 2. dhw_exceedance_1995_2004 ##################-
+
+dhw_exceedance_1995_2004 <- ggplot() +
+  theme_void() +
+  scale_y_continuous(limits = c(-25, -9),
+                     breaks=seq(-25, -9, 2),
+                     labels = paste0(seq(-25, -9, 2), "°N"))  +
+
+  tidyterra::geom_spatraster(data = dhw_exceeding_6_second_subset,  interpolate = FALSE, show.legend = FALSE) +
+  scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7),
+                    na.value = "transparent"
+                    #guide = guide_legend(na.translate = FALSE),
+                  ) +
+  theme(
+    title = NULL,
+    axis.text.x = NULL,
+    legend.position = c(0.56, 0.98),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 7),
+    legend.key.size = unit(0.75, "lines"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")  # Add black border around legend keys
+  ) +
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) +
+  geom_sf(data = mask_border, fill = NA, linewidth=0.5, alpha = 1) +
+ # geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  labs(fill = "n")
+
+
+################## 3. dhw_exceedance_2005_2014 ##################-
+
+dhw_exceedance_2005_2014 <- ggplot() +
+  theme_void() +
+  scale_y_continuous(limits = c(-25, -9),
+                     breaks=seq(-25, -9, 2),
+                     labels = paste0(seq(-25, -9, 2), "°N"))  +
+
+  tidyterra::geom_spatraster(data = dhw_exceeding_6_third_subset,  interpolate = FALSE, show.legend = FALSE) +
+  scale_fill_manual(values = colorRampPalette(rev(brewer.pal(11, "Spectral")))(7),
+                    na.value = "transparent"
+                    #guide = guide_legend(na.translate = FALSE),
+                  ) +
+  theme(
+    title = NULL,
+    axis.text.x = NULL,
+    legend.position = c(0.75, 0.98),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 6),
+    legend.key.size = unit(0.75, "lines"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")  # Add black border around legend keys
+  ) +
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) +
+  geom_sf(data = mask_border, fill = NA, linewidth=0.5, alpha = 1) +
+  #geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  labs(fill = "n")
+
+dhw_exceeding_6_subset_last_2 <- dhw_exceeding_6_subset_last
+dhw_exceeding_6_subset_last_2 <- classify(dhw_exceeding_6_subset_last_2, cbind(NA, 0))
+dhw_exceeding_6_subset_last_2 <- as.factor(dhw_exceeding_6_subset_last_2)
+
+
+################## 4. dhw_exceedance_2015_2024 ##################-
+
+dhw_exceedance_2015_2024 <- ggplot() +
+  theme_void() +
+  scale_y_continuous(limits = c(-25, -9),
+                     breaks=seq(-25, -9, 2),
+                     labels = paste0(seq(-25, -9, 2), "°N"))  +
+  tidyterra::geom_spatraster(data = dhw_exceeding_6_subset_last_2,  interpolate = FALSE, show.legend = TRUE) +
+   scale_fill_manual(
+    values = c("transparent", colorRampPalette(rev(brewer.pal(11, "Spectral")))(7)),  # Adjust color for 0-7 (8 levels)
+    breaks = 0:7,                           # Order legend from 0 to 7
+    labels = as.character(0:7),             # Labels from 0 to 7
+    na.value = "transparent",               # Ensure NA is not visualized
+    name = "> 6DHW events \n per decade"                       # Legend title
+  ) +
+  theme(
+    title = NULL,
+    axis.text.x = NULL,
+    legend.position = c(0.85, 0.98),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 5, margin = margin(t = 0, r = 1, b = 0, l = 3.5)),
+    legend.title = element_text(size = 6.5, hjust=0.2),
+    legend.key.size = unit(0.4, "lines"),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.margin = margin(3.1, 3.1, 3.1, 3.1),
+    legend.key = element_rect(fill = "white", color = "black")  # Add black border around legend keys
+  ) +
+  geom_sf(data = mask_polygons, fill = NA, linewidth = 0.1) +
+  geom_sf(data = mask_border, fill = NA, linewidth=0.5, alpha = 1) +
+  #geom_sf(data = ausmap, fill = "#E2E7D4", alpha = 1) +
+  labs(fill = "N events")
+
+library(patchwork)
+
+dhw_6dhw_maps <- dhw_exceedance_1985_1994 +
+  inset_element(dhw_exceedance_1995_2004, left = -0.095, bottom = 0, right = 0.905, top = 1) +
+  inset_element(dhw_exceedance_2005_2014, left = 0.1, bottom = 0, right = 1.1, top = 1) +
+  inset_element(dhw_exceedance_2015_2024, left = 0.28, bottom = 0, right = 1.28, top = 1)
+
+
+######## COMBINED-
+
+mainfig1 <- main_dhw +
+  geom_text(data=df.labels, aes(date, dhw, label=label), size=2.5, angle = 90) +
+  inset_element(inset, left = 0.02, bottom = 0.3, right = 0.58, top = 0.98)  
+
+dhw_maps <- rate_change_plot +
+  inset_element(max_DHW_plot, left = 0.01, bottom = 0, right = 1.01, top = 1) +
+  inset_element(max_dhw_year_plot, left = 0.245, bottom = 0, right = 1.245, top = 1.04)
+
+```
+
+## Supplemenentary Figures
+### Figure S1 Tipping points in DHW
+
+Annual Great Barrier Reef-wide sea surface temperature (SST), sea surface temperature anomaly (SSTA), and Degree Heating Weeks (`DHW`) from 1940–2025 were analysed using Bayesian changepoint detection  (`beast`). Columns show `SST`, `SSTA` and `DHW`, respectively. Rows show the fitted trend component with observations and posterior mean trend in red, posterior changepoint probability `Pr(tcp)`, posterior probability of trend order, posterior slope-sign probabilities, and residual error. Dashed vertical lines indicate the most probable changepoint years. `SST` and `SSTA` show a marked shift from weak or near-stationary trends before the late 1990s to sustained warming thereafter, while DHW shows increasingly frequent and intense thermal-stress peaks after 1998, with the strongest events concentrated in the most recent decade.
+
+```{r}
+#| message: false
+#| warning: false
+#| fig-height: 9
+#| fig-width: 12
+
+gbr_OISST2_dhw_annual_max <- summarise_raster(GBR_OISST2_DHW, index = "years", fun = max, na.rm = TRUE, overwrite=TRUE)
+
+
+library(ggplot2)
+library(patchwork)
+library(tibble)
+library(dplyr)
+library(tidyr)
+
+ggbeast <- function(o, title = NULL, point_size = 1.6, line_width = 0.8, top_n_vlines = 2) {
+  stopifnot(inherits(o, "beast"))
+  
+  df <- tibble(
+    time   = as.numeric(o$time),
+    data   = as.numeric(o$data),
+    trend  = as.numeric(o$trend$Y),
+    tcpPr  = as.numeric(o$trend$cpOccPr),
+    orderT = as.numeric(o$trend$order),
+    err    = as.numeric(o$data) - as.numeric(o$trend$Y)
+  )
+  
+  slp_df <- tibble(
+    time = df$time,
+    pos  = as.numeric(o$trend$slpSgnPosPr),
+    zero = as.numeric(o$trend$slpSgnZeroPr)
+  ) %>%
+    mutate(neg = pmax(0, 1 - pos - zero)) %>%
+    pivot_longer(cols = c(pos, zero, neg), names_to = "sign", values_to = "prob") %>%
+    mutate(sign = factor(sign, levels = c("neg", "zero", "pos")))
+  
+  # vlines from BEAST trend cp + cpPr
+  cp_tbl <- tibble(
+    cp = as.numeric(o$trend$cp),
+    cp_prob = as.numeric(o$trend$cpPr)
+  ) %>%
+    mutate(year = as.integer(round(cp))) %>%
+    arrange(desc(cp_prob))
+  
+  vlines <- cp_tbl$cp[1:min(top_n_vlines, nrow(cp_tbl))]
+  
+  vline_layer <- if (length(vlines) == 0) NULL else
+    geom_vline(xintercept = vlines, linetype = 2, linewidth = 0.6, alpha = 0.8)
+  
+  p_top <- ggplot(df, aes(time, data)) +
+    geom_point(size = point_size, shape = 21, alpha = 0.5) +
+    geom_line(aes(y = trend), linewidth = 1, color = "red", alpha = 0.8) +
+    vline_layer +
+    theme_bw() +
+    labs(title = title, x = NULL, y = "trend")
+  
+  p_tcp <- ggplot(df, aes(time, tcpPr)) +
+    geom_ribbon(aes(ymin = 0, ymax = tcpPr), fill = "darkgreen", alpha = 0.2) +
+    geom_line(linewidth = 0.25, color = "black") +
+    vline_layer +
+    theme_bw() +
+    labs(x = NULL, y = "Pr(tcp)")
+  
+  p_order <- ggplot(df, aes(time, orderT)) +
+    geom_ribbon(aes(ymin = 0, ymax = orderT), fill = "darkgreen", alpha = 0.2) +
+    geom_line(linewidth = 0.25, color = "black") +
+    theme_bw() +
+    labs(x = NULL, y = "orderT")
+  
+  p_slp <- ggplot(slp_df, aes(time, prob, fill = sign)) +
+    geom_area(position = "stack", color = "black", linewidth = 0.2) +
+    theme_bw() +
+    labs(x = NULL, y = "slpSign") +
+    guides(fill = "none")
+  
+  p_err <- ggplot(df, aes(time, err)) +
+    geom_hline(yintercept = 0, linewidth = 0.4) +
+    geom_col(width = 0.2, linewidth = 0.1) +
+    theme_bw() +
+    labs(x = "Time", y = "error")
+  
+  list(
+    plot = (p_top / p_tcp / p_order / p_slp / p_err),
+    cp_tbl = cp_tbl,
+    vlines = vlines
+  )
+}
+
+x_sst  <- ggbeast(beast_sst,  title = "SST")
+x_ssta <- ggbeast(beast_ssta, title = "SSTA")
+x_dhw  <- ggbeast(beast_dhw,  title = "DHW")
+
+fig_s1 <- (x_sst$plot | x_ssta$plot | x_dhw$plot)
+fig_s1
+
+
+```
+
+### Figure S2 Spatiotemporal patterns of maximum DHW
+
+Annual maximum DHW mapped per year across the GBR domain, 1981–2026, on a common 0–21 °C-week scale. The early record is dominated by low-DHW (blue) years with isolated moderate events, transitioning to frequent high-DHW years from 2016 onward; 2016 and 2017 load heavily on the far northern GBR, 2020 spreads broadly with the strongest northern and central signal, and 2024–2025 show extensive high DHW concentrated in the north. The panel sequence makes the temporal escalation and its northward focus simultaneously legible, showing that recent events are not only hotter but spatially more extensive than any in the preceding three decades, and that the northern GBR bears the most severe and repeated accumulated thermal stress.
+
+
+```{r, figure_s2}
+#| message: false
+#| warning: false
+#| cache: false
+#| fig-height: 10
+#| fig-width: 12
+
+gbr_OISST2_dhw_annual_max <- summarise_raster(rast("~/GBR-dhw/datasets/GBR_OISST_DHW.tif"),
+                                              index = "years", fun = max, na.rm = TRUE, overwrite=TRUE)
+
+
+names(gbr_OISST2_dhw_annual_max) <- sub("^y_", "", names(gbr_OISST2_dhw_annual_max))
+
+dhw_numeric_breaks <- c(0, 3, 6, 9, 12, 15, 18, 21)  # Adjust numeric breaks
+dhw_colour_breaks <- c("#006f99", "#00A6E5", "#FFD700", "#FF8C00", "#B20000", "#660000", "#3D0000")
+
+Figure_S2a <- ggplot() + 
+  theme_bw() +
+  
+  facet_wrap(~lyr, ncol = 12) +
+  tidyterra::geom_spatraster(data = gbr_OISST2_dhw_annual_max) +
+  # scale_fill_distiller(
+  #   palette = "YlOrRd", 
+  #   direction = 1, 
+  #   limits = c(0, 25), 
+  #   na.value = "azure",
+  #   name="DHW"
+  # ) +
+  scale_fill_gradientn(
+    limits = c(0, 21),
+    name = expression(DHW[max]),
+    na.value = "transparent",
+    breaks = dhw_numeric_breaks,
+    labels = dhw_numeric_breaks,
+    colours = dhw_colour_breaks,
+    values = scales::rescale(dhw_numeric_breaks, from = c(0, 20))
+  ) +
+  tidyterra::geom_spatvector(data = aus_outline, fill = "beige") +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "bottom",                       # Place legend below the plot
+    legend.box = "horizontal",                        # Arrange legend items horizontally
+    legend.key.width = unit(1.5, "cm"),               # Adjust legend key width
+  #  legend.margin = margin(t = 5, b = 5)              # Add vertical margins to legend
+  )
+
+Figure_S2a
+
+
+```
+
+### Figure S3 Reef-level annual maximum Degree Heating Weeks by latitude.
+
+A heatmap of per-reef annual maximum DHW (colour, 0–21 °C-weeks) with every reef ordered by latitude on the y-axis (−9° north to −25° south) against year on the x-axis. Vertical warm bands mark the mass-bleaching years (1998, 2002, 2016–2025), which intensify and broaden through time, while the most intense DHW (dark red, >15 °C-weeks) concentrates between roughly −12° and −15° in 2016–2024. The figure shows that thermal stress is organised as coherent basin-scale episodes affecting large contiguous latitudinal bands rather than as fine reef-scale noise, directly supporting the model's regional (~357 km) spatial field, and that the northern-central GBR has experienced both the most frequent and the most extreme recent heat exposure.
+
+
+```{r fig_s3_heatmap}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 15
+#| fig-width: 8
+
+dhw_numeric_breaks <- c(0, 3, 6, 9, 12, 15, 18, 21)  # Adjust numeric breaks
+dhw_colour_breaks <- c("#006f99", "#00A6E5", "#FFD700", "#FF8C00", "#B20000", "#660000", "#3D0000")
+
+GBR_OISST_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST_DHW.tif")
+
+# maxSST per year for OISST in rast
+gbr_OISST2_dhw_annual_max <- summarise_raster(GBR_OISST_DHW,
+                                              index = "years", fun = max, na.rm = TRUE, overwrite=TRUE)
+
+
+
+
+### OISST2
+
+# modified function from DHW:
+
+extract_reefs2 <- function (input, shpfile, output = "sf", fun = "mean", weights = "area", 
+    timeseries = "daily", varname = "sst") 
+{
+    input <- terra::project(input, sf::st_crs(shpfile)$wkt)
+    names(input) <- terra::time(input)
+    extracted_output <- exactextractr::exact_extract(input, shpfile, 
+        progress = FALSE, fun = fun, weights = weights, append_cols = c("LABEL_ID", 
+            "GBR_NAME"))
+    output_file <- dplyr::mutate(tidyr::pivot_longer(extracted_output, 
+        cols = -c("LABEL_ID", "GBR_NAME"), names_to = "date", 
+        values_to = varname), date = sub("^mean\\.", "", date))
+    if (output == "sf") {
+        output_file <- shpfile %>% dplyr::left_join(., output_file, 
+            by = c("LABEL_ID", "GBR_NAME"))
+    }
+    return(output_file)
+}
+
+suppressMessages(suppressWarnings(
+GBR_OISST2_DHW_annual_reefs <- extract_reefs2(gbr_OISST2_dhw_annual_max, gbr_reefs) |>
+  st_centroid() |>
+  mutate(lon = st_coordinates(geometry)[,1],
+         lat = st_coordinates(geometry)[,2]) |>
+  st_drop_geometry() |>
+  as.data.frame() |>
+  na.omit() |>
+  mutate(y = dense_rank(desc(LABEL_ID))) |>
+  mutate(year = as.numeric(date)) |>
+  select(-date)
+))
+
+ggplot() + theme_bw() +
+  geom_tile(data=GBR_OISST2_DHW_annual_reefs, aes(x=year, y=y, color=sst)) +
+  xlab("Year") + ylab("Latitude") +
+  scale_x_continuous(
+    expand = c(0, 0),
+    limits = c(1980, 2026),
+    breaks = seq(1980, 2026, 2)
+  ) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    breaks = seq(floor(min(GBR_OISST2_DHW_annual_reefs$y)), ceiling(max(GBR_OISST2_DHW_annual_reefs$y)), length.out = 9),
+    labels = seq(floor(min(GBR_OISST2_DHW_annual_reefs$lat)), ceiling(max(GBR_OISST2_DHW_annual_reefs$lat)), length.out = 9)
+  ) +
+  scale_color_gradientn(
+    limits = c(0, 21),
+    name = expression(DHW[max]),
+    na.value = "transparent",
+    breaks = dhw_numeric_breaks,
+    labels = dhw_numeric_breaks,
+    colours = dhw_colour_breaks,
+    values = scales::rescale(dhw_numeric_breaks, from = c(0, 20))
+  ) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1)
+  ) + ggtitle("")
+
+
+
+```
+
+### Figure S4 Thermal profiles across DHW event
+
+Seasonal DHW accumulation trajectories (November–August) for each mass-bleaching event, with the long-term climatological mean (black, grey ribbon) for reference and dashed horizontal lines marking each event's peak DHW; the two panels contrast different reference framings/regions. Events differ markedly in both magnitude and timing — 2020 reaches the highest peak (~9.4 DHW) with a late-summer maximum, while 2024 and 2025 (~7 DHW) plateau earlier — and all recent events sit far above the climatological envelope. The figure demonstrates that "DHW" summarises heterogeneous thermal histories: events of similar peak DHW can differ in onset, duration and shape, which is the basis for the dose–response varying among years and a caution that peak DHW alone does not capture the full thermal exposure driving bleaching.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 7
+#| fig-width: 12
+
+
+GBR_OISST_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST_DHW.tif")
+GBR_CRW_DHW <- rast("~/GBR-dhw/datasets/GBR_CoralTemp_DHW.tif")
+
+
+
+annual_OISST <- dhw::plot_annual_dhw(GBR_OISST_DHW)
+annual_CRW <- dhw::plot_annual_dhw(GBR_CRW_DHW)
+
+
+
+annual_OISST + scale_y_continuous(limits=c(0,10), breaks=seq(0,10,2)) | 
+  annual_CRW + scale_y_continuous(limits=c(0,10), breaks=seq(0,10,2)) 
+
+
+
+```
+
+### Figure S5 INLA spatial mesh and survey footprints 
+
+The constrained Delaunay triangulation used for the `SPDE` spatial field, with the GBRMP domain boundary and, per event year, the reef locations actually surveyed (coloured points). The mesh covers the full reef domain at consistent resolution (inner edge 40 km, outer extension to 800 km, `EPSG:32755`), while the survey footprints vary substantially among years — 1998/2002 span the length of the reef, 2016/2017 emphasise the north, and 2025 is restricted to a narrow central band. This figure is the visual justification for the entire repeat-survey and composition-control analysis: because which reefs were surveyed differs systematically by year, pooled year effects risk confounding temporal change with survey footprint, motivating both the spatial field and the within-reef analyses.
+
+```{r inlamesh}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 7
+#| fig-width: 10
+
+
+library(INLA)
+library(fmesher)
+
+gbr_reef_outline <- readRDS("~/GBR-dhw/datasets/gbr_reef_outline.rds")
+
+GBRMPpolygon <- readRDS("~/GBR-dhw/data/GBRMPpolygon.rds")
+
+
+GBRMPpolygon_complex <- gbr_reef_outline |>
+  dplyr::filter(FEAT_NAME == "Reef") |>
+  concaveman::concaveman(concavity = 2, length_threshold = 0) |>
+  st_zm() |> st_transform(32755) |> st_make_valid() |> st_buffer(10000)
+
+GBRMPpolygon <- GBRMPpolygon_complex |> st_simplify(dTolerance = 10000, preserveTopology = FALSE)
+
+pts  <- GBRMPpolygon |> st_coordinates() |> as.data.frame() |> select(1,2) |> as.matrix()
+
+mesh <- inla.mesh.2d(loc.domain = pts[,1:2], boundary = GBRMPpolygon, max.edge = c(40000, 800000), offset = c(5000, 10000), crs="EPSG:32755")
+
+
+dhw_inla <- readRDS("~/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds") |>
+  st_transform(32755) |>
+  mutate(aerial = case_when(
+    max_aerial_score == 0 ~ "0",
+    max_aerial_score %in% c(1, 2) ~ "1",
+    max_aerial_score == 3 ~ "2",
+    max_aerial_score %in% c(4,5) ~ "3",
+    TRUE ~ NA_character_  
+  ) ) |>
+  mutate(aerial = as.numeric(as.character(aerial)) + 1) |>  # note - +1 val
+  select(-max_aerial_score, -median_aerial_score)
+
+
+ggplot() + theme_bw() +
+  facet_wrap(~year, nrow=2) +
+  ggtitle("GBRMP mesh for aerial surveys by year") +
+  geom_sf(data = fm_as_sfc(mesh, multi = FALSE) |> st_make_valid() |> st_union(), linewidth=0.25, fill=NA) +
+  geom_sf(data = fm_as_sfc(mesh, multi = FALSE), linewidth=0.04, fill=NA, color="grey") +
+  geom_sf(data=dhw_inla, aes(fill=as.factor(year), color=as.factor(year)), alpha=0.2, stroke=1, size = 2, show.legend=FALSE) +
+  scale_fill_brewer(palette="RdBu", direction=-1) +
+  scale_color_brewer(palette="RdBu", direction=-1) +
+  geom_sf(data = GBRMPpolygon, linewidth=0.1, fill=NA, color="blue") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position="bottom")
+
+```
+
+### Figure S6 Latent-scale predictive uncertainty
+
+Maps of the 95% credible-interval width of the latent linear predictor η (logit scale) across the hexagonal prediction grid for each event. Uncertainty is lowest (pale) along the densely surveyed reef matrix and rises (dark) at the domain margins and sparsely sampled extremities, with the spatial pattern essentially constant across years. Reporting uncertainty on the latent scale rather than the probability scale avoids the artificial compression the logistic transformation imposes near p = 0.5, and the figure shows that predictions are well constrained where survey density is high and should be interpreted cautiously at the poorly sampled edges — consistent with the decision to interpret predicted surfaces at the regional rather than the grid-cell scale.
+                        
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 5
+#| fig-width: 12
+
+GBR_grid_pred <- readRDS("~/GBR-dhw/data/GBR_grid_pred.rds")
+
+p_eta_unc <- ggplot(GBR_grid_pred) +
+  geom_sf(aes(fill = eta_ci_width), colour = NA) +
+  scale_fill_viridis_c(option = "mako", direction = -1,
+                       name = "Latent 95%\nCI width (logit)") +
+  facet_wrap(~ year, nrow = 2) +
+
+  theme_void() +
+  theme(legend.position = "right", strip.text = element_text(size = 9),
+        plot.subtitle = element_text(size = 8))
+ 
+p_eta_unc
+ 
+
+
+```
+
+### Figure S7 Modal ordinal predictions
+
+The most-likely bleaching category per grid cell per event, mapped on the collapsed ordinal scale (No/low, Low–moderate, Moderate, High/severe. The modal surface shifts from predominantly No/low in 1998/2002 to extensive High/severe and Moderate classes in 2016, 2020 and 2022, with large NA areas in years of restricted survey coverage. The figure translates the latent model into an interpretable categorical map, showing the regional progression toward more severe modal states in recent events while honestly masking cells where the prediction would be an extrapolation beyond sampled DHW.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 4
+#| fig-width: 12
+
+#  - cat_mode = the model's single best-guess bleaching class per cell -> a
+#    categorical analogue of the raw interpolated Fig 2a, but model-driven.
+
+GBRMPpolygon <- readRDS("~/GBR-dhw/data/GBRMPpolygon.rds")
+GBR_grid_pred_pom <- readRDS("~/GBR-dhw/data/GBR_grid_pred_pom.rds")
+
+
+# ---- discrete (categorical) map ---------------------------------------------
+cat_vals <- c("1"="#4DADE6","2"="#5BC36E","3"="#FFFF80","4"="#FF784E")
+cat_labs <- c("1"="No/low","2"="Low–moderate","3"="Moderate","4"="High/severe")
+
+p_main <- ggplot() +
+  geom_sf(data = GBRMPpolygon, linewidth = 0.25, colour = "lightgrey", fill = NA) +
+  geom_sf(data = GBR_grid_pred_pom, aes(fill = cat_mode), colour = NA) +
+  geom_sf(data = GBRMPpolygon, linewidth = 0.25, colour = "black", fill = NA) +
+  scale_fill_manual(values = cat_vals, labels = cat_labs, name = "Most likely\ncategory",
+                    drop = FALSE) +
+  facet_wrap(~ year, nrow = 2) +
+  theme_void() + theme(legend.position = "right", strip.text = element_text(size = 9))
+
+p_main
+
+```
+### Figure S8 Probability of severe bleaching for INLA spatial model
+
+Mapped posterior-mean `P(Y = severe) = 1 − F(α₃ − η)` per grid cell per event, on a 0–100% scale. Severe-bleaching probability is low and spatially patchy in 1998/2002, becomes high and widespread from 2016 onward, and reaches its most extensive coverage in 2020, 2022 and 2024, with the northern and central reef matrix most affected. The figure is the probability-scale expression of the headline result — the regional likelihood of severe bleaching at observed thermal stress has risen markedly across events — and complements the latent-scale uncertainty map (S6) that qualifies where these probabilities are well constrained.
+
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 4
+#| fig-width: 12
+
+library(scales)
+
+sev_pal <- c("#2c7bb6","#ffffbf","#fdae61","#d7191c","darkred")  # blue->red
+
+GBR_grid_pred <- readRDS("~/GBR-dhw/data/GBR_grid_pred.rds")
+GBRMPpolygon <- readRDS("~/GBR-dhw/data/GBRMPpolygon_grid_pred.rds")
+
+p_main <- ggplot() +
+  geom_sf(data = GBRMPpolygon, linewidth = 0.25, color = "lightgrey", fill = NA) +
+  geom_sf(data = GBR_grid_pred, aes(fill = p_severe), show.legend=TRUE, colour = NA) +
+ # geom_sf(data = GBRMPpolygon2025, linewidth = 0.25, color = "black", fill = NA) +
+  geom_sf(data = GBRMPpolygon, linewidth = 0.25, color = "black", fill = NA) +
+  scale_fill_gradientn(colours = sev_pal, limits = c(0,1),
+                       name = "P(severe)", labels = percent) +
+  facet_wrap(~ year, nrow = 2) +
+  # labs(title = "Model-predicted probability of severe bleaching",
+  #      subtitle = "Posterior mean from the spatial POM model (SPDE field + DHW + year)") +
+  theme_void() + theme(legend.position = "right",
+                       strip.text = element_text(size = 9))
+
+
+p_main
+
+
+```
+
+### Figure S9 DHW predictions (NOAA CRW)
+
+Panel A tracks the 30 reefs surveyed in all eight events (1998–2025) through their ordered bleaching category, with ribbons tracing individual-reef transitions and per-event maps of scored reefs; panel B shows the larger 2016–2025 panel (n = 81). The alluvial flows show increasing occupancy of high categories (4–5) in recent events and a rising frequency of upward transitions, while the 2022 column carries the only substantial category-5 (most severe) block. The figure presents the repeat-survey evidence on the full (non-balanced) dataset, demonstrating that the erosion of recovery and accumulation in severe categories is visible across both the long (1998-anchored, n = 30) and recent (2016-anchored, n = 81) repeat panels, and it is the data source underlying the within-reef contextual-vulnerability analyses.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 4
+#| fig-width: 12
+
+library(sf)
+library(tidyverse)
+library(INLA)
+library(concaveman)
+library(fmesher)
+library(terra)
+library(kableExtra)
+library(patchwork)
+library(ggplot2)
+library(ggridges)
+
+
+
+## load observation data
+
+dhw_inla_crw <- readRDS("~/GBR-dhw/datasets/gbr_shape_aerial_CRW.rds") |>
+  st_transform(32755) |>
+  mutate(aerial = case_when(
+    max_aerial_score == 0 ~ "0",
+    max_aerial_score == 1 ~ "1",
+    max_aerial_score == 2 ~ "2",
+    max_aerial_score == 3 ~ "3",
+    max_aerial_score == 4 ~ "4",
+    max_aerial_score == 5~ "4",
+    TRUE ~ NA_character_
+  ) ) |>
+  mutate(aerial = as.numeric(as.character(aerial)) + 1) |>  # note - +1 val
+  select(-max_aerial_score, -median_aerial_score)
+
+# load boundary
+# GBRMPpolygon_complex <- st_read("~/GBR-dhw/archive/datasets/aerialshp/TS_GBRMP_FEATURES.shp", quiet=TRUE) |>
+
+gbr_reef_outline <- readRDS("~/GBR-dhw/datasets/gbr_reef_outline.rds")
+
+
+GBRMPpolygon_complex <- gbr_reef_outline |>
+  dplyr::filter(FEAT_NAME=="Reef") |>
+  concaveman::concaveman(concavity = 2, length_threshold = 0) |>
+  st_zm() |>
+  st_transform(32755) |>
+  st_make_valid() |>
+  st_buffer(10000)
+
+GBRMPpolygon <- GBRMPpolygon_complex |> st_simplify(dTolerance = 10000, preserveTopology = FALSE)
+
+# make prediction grid
+GBRMPpredict_grid_CRW <- st_make_grid(st_bbox(GBRMPpolygon), cellsize = 27830, square = FALSE) |>
+  st_as_sf() |>
+  st_filter(GBRMPpolygon, .predicate = st_intersects)
+
+# CRW_dhw <- rast("~/GBR-dhw/datasets/GBR_CoralTemp_DHW.tif")
+# CRW_dhw <- project(CRW_dhw, "EPSG:32755")
+# CRW_annual_max_dhw <- terra::tapp(CRW_dhw, index = "years", fun = max, na.rm = TRUE, overwrite=TRUE)
+# CRW_annual_max_dhw <- CRW_annual_max_dhw[[paste0("y_",  c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025))]]
+# names(CRW_annual_max_dhw) <- sub("^y_", "", names(CRW_annual_max_dhw))
+# writeRaster(CRW_annual_max_dhw, "~/GBR-dhw/datasets/CRW_annual_max_dhw.tif")
+CRW_annual_max_dhw <- rast("~/GBR-dhw/datasets/CRW_annual_max_dhw.tif")
+
+names(CRW_annual_max_dhw) <- c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025)
+
+# update with processed CRW
+GBRMP_aerial_CRW <- dhw_inla_crw  |> arrange(year, aerial) |> mutate(year=factor(year, levels = c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025)))
+GBRMP_aerial_CRW_centroids <- GBRMP_aerial_CRW |> st_centroid()
+GBRMP_aerial_CRW_centroids$dhw <- GBRMP_aerial_CRW_centroids$dhwCRW
+
+# extract DHW for the prediction grid and convert to points
+GBRMPpredict_grid_dhw_CRW <- list()
+for (i in 1:8) {
+  #for (i in 1:length(names(CRW_annual_max_dhw))) {
+  GBRMPpredict_grid_CRW$dhw <- exactextractr::exact_extract(CRW_annual_max_dhw[[i]], GBRMPpredict_grid_CRW, fun = "max", progress = FALSE, weights = "area")
+  GBRMPpredict_grid_dhw_CRW[[i]] <- GBRMPpredict_grid_CRW |> mutate(year = as.factor(names(CRW_annual_max_dhw)[[i]]))
+}
+GBRMPpredict_grid_dhw_CRW <- do.call(rbind, GBRMPpredict_grid_dhw_CRW)
+GBR_grid_CRW <- GBRMPpredict_grid_dhw_CRW |> na.omit()
+GBR_grid_CRW_centroids <- GBRMPpredict_grid_dhw_CRW |> st_centroid() |> na.omit()
+
+# make points along linestring for border extent
+boundary_CRW <- GBR_grid_CRW_centroids |>
+  select(-year, -dhw) |>
+  distinct() |>
+  concaveman::concaveman() |>
+  st_buffer(10000) |>
+  st_boundary()
+
+# get boundary points and make mesh
+pts_CRW <- GBRMPpolygon |> st_coordinates() |> as.data.frame() |> select(1,2) |> as.matrix()
+
+# max.edge is the largest allowed triangle length; the lower the number the higher the resolution max.edge = c(inside the boundary triangle, outside the boundary triangle).
+# offset is defining how far you want to extend your domain (i.e. a secondary boundary box) for inner boundary and outer boundary; the offset goes with the max edge
+# see https://sites.stat.washington.edu/peter/591/Lindgren.pdf
+
+mesh_CRW <- fmesher::fm_mesh_2d_inla(loc.domain = pts_CRW[,1:2], boundary = GBRMPpolygon, max.edge = c(40000, 800000), offset = c(5000, 10000), crs="EPSG:32755")
+
+# Define the SPDE model using the mesh
+#spde_CRW <- inla.spde2.matern(mesh = mesh_CRW, alpha = 2)
+
+spde_CRW <- inla.spde2.pcmatern(
+  mesh_CRW,
+  alpha = 2,
+  prior.range = c(150000, 0.5),   # P(range < 150 km) = 0.5   -- metres (EPSG:32755)
+  prior.sigma = c(3, 0.01))       # P(sigma > 3) = 0.01  -- field SD ~3.7 was observed, so allow it
+
+# Create a projection matrix for the observed data
+A_obs_CRW <- inla.spde.make.A(mesh = mesh_CRW, loc = st_coordinates(GBRMP_aerial_CRW_centroids))
+
+# Create an index for the spatial field (random effect) in the SPDE model
+s_index_CRW <- inla.spde.make.index(name = "spatial.field", n.spde = spde_CRW$n.spde)
+
+# Prepare the data stack for the observed  data
+obs_stack_CRW <- inla.stack(
+  data = list(aerial = GBRMP_aerial_CRW_centroids$aerial),  # Response variable
+  A = list(A_obs_CRW, 1),  # Projection matrix for the spatial model and fixed effects
+  effects = list(
+    c(s_index_CRW, list(Intercept = 1)),  # Spatial random effects + intercept
+    list(dhw = GBRMP_aerial_CRW_centroids$dhw, year = GBRMP_aerial_CRW_centroids$year, LABEL_ID = GBRMP_aerial_CRW_centroids$LABEL_ID)  # Covariates: dhw and year
+  ),
+  tag = "obs"  # Tag for the observed data stack
+)
+
+
+# repeat expand_grid for each grid-cell layout
+min_dhw_CRW <- 0  # Minimum DHW
+max_dhw_CRW <- 16
+dhw_seq_CRW <- seq(min_dhw_CRW, max_dhw_CRW, length.out = 17)  # Generate 100 values between min and max DHW
+unique_years_CRW <- unique(GBR_grid_CRW_centroids$year)
+pred_grid_CRW <- expand.grid(dhw = dhw_seq_CRW, year = unique_years_CRW) # Create a grid of dhw and year combinations
+n_locs_CRW <- nrow(GBR_grid_CRW_centroids) # Number of spatial locations
+expanded_coords_CRW <- st_coordinates(GBR_grid_CRW_centroids)[rep(1:n_locs_CRW, times = nrow(pred_grid_CRW)), ] # Replicate the spatial locations for each dhw-year combination
+
+# make preds mesh / stack
+A_pred_expanded_CRW <- inla.spde.make.A(mesh = mesh_CRW, loc = expanded_coords_CRW)
+expanded_grid_CRW <- pred_grid_CRW[rep(1:nrow(pred_grid_CRW), each = n_locs_CRW), ]
+expanded_grid_sf_CRW <- cbind(expanded_grid_CRW, expanded_coords_CRW) |> st_as_sf(coords=c("X", "Y"), crs=32755)
+
+preds_stack_CRW <- inla.stack(
+  data = list(aerial = NA),  # NA for predictions
+  A = list(A_pred_expanded_CRW, 1),
+  effects = list(
+    c(s_index_CRW, list(Intercept = 1)),  # Spatial random effects + intercept for prediction
+    list(dhw = expanded_grid_CRW$dhw, year = expanded_grid_CRW$year, LABEL_ID = NA)  # Expanded dhw and year
+  ),
+  tag = "preds"
+)
+
+# polygon prediction stack
+
+
+GBRMP_aerial_centroids <- GBRMP_aerial_CRW |> st_centroid() |> mutate(dhw = dhwCRW)
+
+gbr_reef_subset <- gbr_reef_outline |>
+  st_zm() |>
+  filter(!FEAT_NAME %in% c("Mainland", "Other")) |>
+  filter(X_COORD > 140) |>
+  filter(Y_COORD > -24.3) |>
+  st_make_valid() |>
+  st_transform(4326)
+
+
+gbr_reef_32755_CRW <- gbr_reef_subset |>          # <- the reef POLYGON layer
+  st_make_valid() |> st_transform(32755)
+
+yrs_CRW <- names(CRW_annual_max_dhw)            # "1998","2002",...,"2025"
+
+reef_year_dhw_CRW <- lapply(seq_along(yrs_CRW), function(i) {
+  dhw_i <- exactextractr::exact_extract(
+    CRW_annual_max_dhw[[i]],               # year i's DHW raster layer
+    gbr_reef_32755_CRW,                    # extract onto each reef polygon
+    fun = "max", progress = FALSE)
+  gbr_reef_32755_CRW |>
+    transmute(TARGET_FID, LABEL_ID, year = yrs_CRW[i], dhw = dhw_i)
+}) |>
+  bind_rows() |>
+  filter(is.finite(dhw))
+
+pred_pts_CRW <- reef_year_dhw_CRW |>
+  st_centroid()
+
+year_levels_CRW <- union(levels(GBRMP_aerial_CRW_centroids$year), sort(unique(pred_pts_CRW$year)))
+id_levels_CRW   <- union(levels(factor(GBRMP_aerial_CRW_centroids$LABEL_ID)), sort(unique(pred_pts_CRW$LABEL_ID)))
+
+pred_pts2_CRW <- pred_pts_CRW |>
+  mutate(
+    year = factor(as.character(year), levels = year_levels_CRW),
+    LABEL_ID = factor(as.character(LABEL_ID), levels = id_levels_CRW)
+  )
+
+# build reef_year_dhw_CRW + pred_pts2_CRW with harmonised factor levels as before, then:
+pred_stack_poly_CRW <- inla.stack(
+  data = list(aerial = NA),
+  A = list(inla.spde.make.A(mesh_CRW, st_coordinates(pred_pts2_CRW)), 1),
+  effects = list(c(s_index_CRW, list(Intercept = 1)),
+                 list(dhw = pred_pts2_CRW$dhw, year = pred_pts2_CRW$year, 
+                      LABEL_ID = pred_pts2_CRW$LABEL_ID)),
+  tag = "pred_poly")
+
+combined_stack_CRW <- inla.stack(obs_stack_CRW, preds_stack_CRW, pred_stack_poly_CRW)   
+
+
+# Define the INLA formula (full spatial model)
+inla_formula_CRW <- aerial ~ dhw * year + f(spatial.field, model = spde_CRW) + f(LABEL_ID, model = "iid")
+
+# Define fixed effect priors
+fixedpriors_CRW <- list(dic = TRUE, waic = TRUE, config = TRUE, return.marginals.predictor = TRUE)
+
+fm1_CRW <- inla(
+  inla_formula_CRW,
+  data = inla.stack.data(combined_stack_CRW),
+  control.predictor = list(A = inla.stack.A(combined_stack_CRW), 
+                           compute = TRUE, link = 1),
+  family = "pom",
+  control.family = list(control.pom = list(cdf = "logit")),
+  control.fixed = list(
+    mean.intercept = -2,        # Baseline very low bleaching
+    prec.intercept = 1,         # Moderate certainty in that belief
+    mean = c(dhw = 1, year = 0),
+    prec = c(dhw = 0.001, year = 0.001)  # weak dhw prior, weak year prior
+  ),
+  control.compute =  list(dic = TRUE, waic = TRUE, 
+                          config = TRUE, return.marginals.predictor = TRUE),
+  control.inla = list(control.vb = list(emergency = 30)),
+  silent=2L
+)
+
+# saveRDS(fm1_CRW, "~/GBR-dhw/data/fm1_CRW.rds")
+# fm1_CRW <- readRDS("~/GBR-dhw/data/fm1_CRW.rds")
+
+# sp_CRW <- inla.spde2.result(fm1_CRW, "spatial.field", spde_CRW, do.transform = TRUE)
+# inla.qmarginal(c(.025,.5,.975), sp_CRW$marginals.range.nominal[[1]])   # range, metres
+# inla.qmarginal(c(.025,.5,.975), sp_CRW$marginals.variance.nominal[[1]]) # marginal variance
+
+
+##### extract fixed effects
+
+# Extract marginals from fm1_CRW$marginals.fixed and convert them into a data frame
+combined_df_fixef_CRW <- bind_rows(
+  lapply(names(fm1_CRW$marginals.fixed), function(param) {
+    df <- as.data.frame(fm1_CRW$marginals.fixed[[param]])
+    df$parameter <- param
+    return(df)
+  })
+) |>
+  rename(x=1, height=2, parameter=3)
+
+# Extract marginals from fm1_CRW$marginals.fixed and convert them into a data frame
+combined_df_hyper_CRW <- bind_rows(
+  lapply(names(fm1_CRW$marginals.hyperpar), function(param) {
+    df <- as.data.frame(fm1_CRW$marginals.hyperpar[[param]]) # Convert to data frame
+    df$parameter <- param # Add a column for the parameter name
+    return(df)
+  })
+) |>
+  rename(x=1, height=2, parameter=3) |>
+  mutate(parameter = factor(parameter,
+                            levels=c("theta1 for POM",
+                                     "theta2 for POM",
+                                     "theta3 for POM",
+                                     "theta4 for POM",
+                                     "Theta1 for spatial.field",
+                                     "Theta2 for spatial.field")))
+
+
+
+# Extract marginals from fm1_CRW$marginals.fixed and convert them into a data frame
+combined_df_fixef_CRW <- bind_rows(
+  lapply(names(fm1_CRW$marginals.fixed), function(param) {
+    df <- as.data.frame(fm1_CRW$marginals.fixed[[param]])
+    df$parameter <- param
+    return(df)
+  })
+) |>
+  rename(x = 1, height = 2, parameter = 3) |>
+  filter(!parameter == "(Intercept)") |>
+  mutate(parameter = factor(parameter, levels = c(
+    "dhw", "year2002", "year2016", "year2017", "year2020", "year2022", "year2024", "year2025",
+    "dhw:year2002", "dhw:year2016", "dhw:year2017", "dhw:year2020", "dhw:year2022",
+    "dhw:year2024","dhw:year2025"
+  ), ordered = TRUE))
+
+
+
+fixef_plot_ms_CRW <- ggplot() + 
+  geom_ridgeline(data=combined_df_fixef_CRW, 
+                 aes(x = x, y = fct_rev(parameter), height = height/10, group = parameter), 
+                 fill = "aquamarine4", alpha=0.5) +
+  theme_bw() +
+  xlim(-3,6) + ylab("") +
+  geom_vline(xintercept=0, linewidth=0.5, color="darkgrey") +
+  #labs(title = "Posterior Marginals for Fixed Effects", x = "Value (x)", y = "Parameter") +
+  theme(legend.position = "none") +
+  xlab("Posterior Mean (Effect Size)")
+
+
+# ordinal (POM) prediction + stacked cumulative-probability figure
+# model was fit with control.pom = list(cdf = "logit"), so the back-transform 
+# must use plogis(). cut-points are reconstructed from INLA's internal increment
+# parameterisation (alpha1 = theta1; alpha_k = alpha_{k-1} + exp(theta_k)),
+# i.e.correct ordered-threshold scale 
+
+
+# ---- 1. POM category probabilities from latent eta + ordered cut-points -----
+# P(Y = k) = F(alpha_k - eta) - F(alpha_{k-1} - eta), with F = plogis (logit)
+predict_pom_with_bounds_CRW <- function(eta_mean, eta_lower, eta_upper, cutpoints,
+                                        link = "logit") {
+  cdf <- switch(link, logit = plogis, probit = pnorm,
+                stop("link must be 'logit' or 'probit'"))
+  cutpoints <- sort(cutpoints)                 # ensure ordered thresholds
+  n <- length(eta_mean)
+  K <- length(cutpoints) + 1L
+  
+  cat_probs <- function(eta) {
+    p <- diff(c(0, cdf(cutpoints - eta), 1))   # K categories
+    pmax(p, 0)
+  }
+  P  <- t(vapply(eta_mean,  cat_probs, numeric(K)))
+  Pl <- t(vapply(eta_lower, cat_probs, numeric(K)))
+  Pu <- t(vapply(eta_upper, cat_probs, numeric(K)))
+  
+  list(mean  = as.data.frame(P),
+       lower = as.data.frame(pmin(Pl, Pu)),    # CI bounds can invert per category
+       upper = as.data.frame(pmax(Pl, Pu)))
+}
+
+# ---- 2. reconstruct ORDERED cut-points (not raw thetas) ---------------------
+th_CRW <- c(fm1_CRW$summary.hyperpar["theta1 for POM", "mean"],
+            fm1_CRW$summary.hyperpar["theta2 for POM", "mean"],
+            fm1_CRW$summary.hyperpar["theta3 for POM", "mean"],
+            fm1_CRW$summary.hyperpar["theta4 for POM", "mean"])
+cutpoints_CRW <- cumsum(c(th_CRW[1], exp(th_CRW[-1])))     # alpha1, alpha1+exp(th2), ...
+# (these should be increasing, e.g. ~ -2.57, 0.46, 1.82)
+
+# ---- 3. use the LATENT LINEAR PREDICTOR, not fitted values ------------------
+lp_CRW <- fm1_CRW$summary.linear.predictor            # <- eta scale, what POM needs
+eta_mean_CRW  <- lp_CRW$mean
+eta_lower_CRW <- lp_CRW$`0.025quant`
+eta_upper_CRW <- lp_CRW$`0.975quant`
+
+pp_CRW <- predict_pom_with_bounds_CRW(eta_mean_CRW, eta_lower_CRW, eta_upper_CRW, cutpoints_CRW,
+                                      link = "logit")
+
+# ---- 4. attach to the prediction grid ---------------------------------------
+index_pred_CRW <- inla.stack.index(combined_stack_CRW, tag = "preds")$data
+point_data_CRW <- expanded_grid_CRW |>
+  mutate(loc_id = rep(seq_len(n_locs_CRW), times = nrow(pred_grid_CRW)))
+
+predicted_ordinal_mean_CRW <- cbind(point_data_CRW, pp_CRW$mean[index_pred_CRW, ]) |>
+  pivot_longer(cols = starts_with("V"), names_to = "aerial_score", values_to = "mean") |>
+  mutate(
+    aerial = recode(
+      aerial_score,
+      V1 = "No bleaching",
+      V2 = "Low bleaching",
+      V3 = "Moderate bleaching",
+      V4 = "High bleaching",
+      V5 = "Very high bleaching"
+    ),
+    aerial = factor(
+      aerial,
+      c(
+        "No bleaching",
+        "Low bleaching",
+        "Moderate bleaching",
+        "High bleaching",
+        "Very high bleaching"
+      )
+    ),
+    year = as.integer(as.character(year))
+  )
+
+# ---- 5. mask each panel beyond its observed DHW (no extrapolation shown) -----
+
+max_dhw_by_year_CRW <- GBRMP_aerial_CRW_centroids |> st_drop_geometry() |>
+  mutate(year = as.integer(as.character(year))) |>
+  group_by(year) |> summarise(min_dhw = ceiling(min(dhw, na.rm = TRUE)), 
+                              max_dhw = ceiling(max(dhw, na.rm = TRUE)), .groups = "drop")
+
+# interpcolors <- c("No bleaching"="#74ADD1","Low-Moderate bleaching"="#FEE090",
+#                   "High bleaching"="#FDAE61","Very High-Extreme bleaching"="#D73027")
+
+
+# <- c("No bleaching"="#ABD9E9","Low-Moderate bleaching"="#FFFFBF",
+#                  "High bleaching"="#FDAE61","Very High-Extreme bleaching"="#D73027")
+
+interpcolors_aerial_score_full_CRW <- c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43", "#D73027")
+interpcolors_aerial_score_five_CRW <- c("#ABD9E9", "#FFFFBF", "#FDAE61", "#F46D43", "#D73027")
+
+
+
+plot_with_mask_CRW <- function(yr) {
+  min_dhw <- max_dhw_by_year_CRW |> filter(year == yr) |> pull(min_dhw)
+  max_dhw <- max_dhw_by_year_CRW |> filter(year == yr) |> pull(max_dhw)
+  predicted_ordinal_mean_CRW_plot <- predicted_ordinal_mean_CRW |>
+    group_by(dhw, year, aerial_score, aerial) |>
+    summarise(
+      mean = mean(mean, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  ggplot() + theme_bw() +
+    geom_area(data = predicted_ordinal_mean_CRW_plot |> filter(year == yr),
+              aes(x = dhw, y = mean, fill = aerial),
+              position = "stack", colour = "black", linewidth = 0.4,
+              show.legend = (yr == 2024)) +
+    geom_vline(xintercept = c(2,4,6,8,10,12,14),
+               linetype = c("dotted","dotted","dotted","dotdash","dotdash","longdash","longdash"),
+               linewidth = 0.2) +
+    geom_rect(aes(xmin = 0, xmax = min_dhw, ymin = 0, ymax = 1), fill = "white", alpha=1) +
+    geom_rect(aes(xmin = max_dhw, xmax = 16, ymin = 0, ymax = 1), fill = "white") +
+    scale_x_continuous(limits = c(0,16), breaks = seq(0,16,4)) +
+    scale_fill_manual(values = interpcolors_aerial_score_five_CRW) +
+    xlab("") + ylab(if (yr == 1998) "Cumulative probability" else "") +
+    ggtitle(paste0(yr, " event")) +
+    theme(plot.title = element_text(size = 10),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          axis.text.y = if (yr == 1998) element_text() else element_blank(),
+          legend.position = if (yr == 2024) "bottom" else "none")
+}
+
+
+years_CRW <- c(1998,2002,2016,2017,2020,2022,2024, 2025)   # note 2025: DHW floor ~7.5, no low-DHW support
+plot_list_CRW <- lapply(years_CRW, plot_with_mask_CRW)
+
+pom_preds_CRW <- wrap_plots(plot_list_CRW, ncol = 8) + plot_layout(guides = "collect") &
+  theme(legend.position = "bottom", legend.justification = "center")
+
+pom_preds_CRW
+
+
+
+```
+
+### Figure S10 DHW comparisons (OISST vs CRW)
+
+The scatter panel (Image 3) cross-plots reef-level CRW DHW against OISST DHW per event with the 1:1 line and per-panel R²; the map panel (Image 6) shows the spatial difference (OISST − CRW) per event. Agreement between products is event-dependent — strong in 2016 (R² = 0.76) and 2022 (R² = 0.60) but weak in 2002 (R² = 0.06) and 2020 (R² = 0.26) — and OISST generally exceeds CRW (points below the 1:1 line; predominantly positive ΔDHW, strongest in the far north). The figure is a product-sensitivity check showing that absolute DHW values are sensitive to the SST product, particularly in the north and in early/low-signal years, which justifies reporting the CRW-based re-analysis (S9) and treating cross-product agreement as a bound on how precisely event thermal dose can be assigned.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 6
+#| fig-width: 12
+
+library(tidyverse)
+library(broom)
+
+gbr_shape_aerial_OISST_comparison <- readRDS("/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds") |>
+  mutate(aerial = max_aerial_score) |>  
+  select(-max_aerial_score, -median_aerial_score) |> 
+  rename(dhwOISST = dhw)
+
+gbr_shape_aerial_CRW_comparison <- readRDS("~/GBR-dhw/datasets/gbr_shape_aerial_CRW.rds") |>
+  mutate(aerial = max_aerial_score) |>  # note - +1 val
+  select(-max_aerial_score, -median_aerial_score) 
+
+GBRMP_dhwcomp <- left_join(
+    gbr_shape_aerial_OISST_comparison |> as.data.frame() |> select(LABEL_ID, year, dhwOISST),
+    gbr_shape_aerial_CRW_comparison |> as.data.frame() |> select(LABEL_ID, year, dhwCRW)
+  ) |>
+  mutate(
+    year = as.integer(as.character(year))
+  ) |>
+  filter(
+    is.finite(dhwOISST),
+    is.finite(dhwCRW)
+  )
+
+
+lm_r2_lab <- GBRMP_dhwcomp |>
+  group_by(year) |>
+  nest() |>
+  mutate(
+    fit = map(data, ~ lm(dhwCRW ~ dhwOISST, data = .x)),
+    glance = map(fit, broom::glance)
+  ) |>
+  select(year, glance) |>
+  unnest(glance) |>
+  mutate(
+    lab = paste0("R² = ", round(r.squared, 2)),
+    x = -Inf,
+    y = Inf
+  )
+
+dhw_lm_plot <- ggplot() +
+  theme_bw() +
+  geom_point(
+    data = GBRMP_dhwcomp,
+    aes(dhwOISST, dhwCRW, fill = factor(year)),
+    shape = 21,
+    size = 2,
+    alpha = 0.5
+  ) +
+  geom_smooth(
+    data = GBRMP_dhwcomp,
+    aes(dhwOISST, dhwCRW),
+    method = "lm",
+    se = TRUE,
+    colour = "black",
+    fill = "grey70",
+    alpha = 0.35,
+    linewidth = 0.6
+  ) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey40",
+    linewidth = 0.5
+  ) +
+  geom_text(
+    data = lm_r2_lab,
+    aes(x = x, y = y, label = lab),
+    inherit.aes = FALSE,
+    hjust = -0.1,
+    vjust = 1.3,
+    size = 4.5
+  ) +
+  facet_wrap(~year, nrow=2) +
+  labs(
+    x = "OISST DHW",
+    y = "CRW DHW",
+    fill = "Year"
+  ) +
+  theme(
+    legend.position = "none"
+  ) + coord_fixed() +
+  scale_x_continuous(limits=c(0,20), breaks=seq(0,20,4)) +
+  scale_y_continuous(limits=c(0,20), breaks=seq(0,20,4))
+
+dhw_lm_plot
+
+
+```
+
+### Figure S11 Spatial DHWdelta (OISST - CRW)
+
+Event-specific cumulative-probability (stacked-area) curves of bleaching category against DHW (0–16 °C-weeks) for the proportional-odds model, masked to each event's observed DHW range; colours run No bleaching (blue) through Very high (dark red). The curves shift progressively leftward and upward through time — 1998/2002 retain substantial No/Low probability up to moderate DHW, whereas 2016, 2020, 2022 and 2024 reach high/very-high categories at low DHW — visualising the rising bleaching propensity per unit thermal stress that is the paper's central result.
+
+```{r}
+#| message: false
+#| warning: false
+
+GBR_OISST_DHW <- rast("~/GBR-dhw/datasets/GBR_OISST_DHW.tif")
+GBR_CRW_DHW <- rast("~/GBR-dhw/datasets/GBR_CoralTemp_DHW.tif")
+
+library(tidyverse)
+library(terra)
+library(tidyterra)
+library(ggplot2)
+
+bleaching_years <- c(1998, 2002, 2016, 2017, 2020, 2022, 2024, 2025)
+
+# helper: annual maximum raster for selected years
+calc_year_max <- function(x, years) {
+  
+  x_dates <- as.Date(time(x))
+  x_years <- lubridate::year(x_dates)
+  
+  out <- map(
+    years,
+    \(yr) {
+      
+      lyr <- which(x_years == yr)
+      
+      if (length(lyr) == 0) {
+        r <- x[[1]]
+        values(r) <- NA_real_
+        names(r) <- paste0("y", yr)
+        return(r)
+      }
+      
+      r <- app(x[[lyr]], max, na.rm = TRUE)
+      names(r) <- paste0("y", yr)
+      r
+    }
+  ) |>
+    rast()
+  
+  time(out) <- as.Date(paste0(years, "-01-01"))
+  names(out) <- paste0("y", years)
+  
+  out
+}
+
+# annual maximum DHW
+GBR_OISST_DHW_max <- calc_year_max(
+  GBR_OISST_DHW,
+  bleaching_years
+)
+
+GBR_CRW_DHW_max <- calc_year_max(
+  GBR_CRW_DHW,
+  bleaching_years
+)
+
+# project/resample CRW annual maxima onto OISST grid
+GBR_CRW_DHW_max_OISSTgrid <- project(
+  GBR_CRW_DHW_max,
+  GBR_OISST_DHW_max,
+  method = "bilinear"
+)
+
+names(GBR_CRW_DHW_max_OISSTgrid) <- names(GBR_OISST_DHW_max)
+time(GBR_CRW_DHW_max_OISSTgrid) <- time(GBR_OISST_DHW_max)
+
+# delta DHW: positive = OISST higher than CRW
+GBR_delta_DHW <- GBR_OISST_DHW_max - GBR_CRW_DHW_max_OISSTgrid
+
+names(GBR_delta_DHW) <- paste0("deltaDHW_", bleaching_years)
+time(GBR_delta_DHW) <- as.Date(paste0(bleaching_years, "-01-01"))
+
+deltaDHW_plot <- ggplot() +
+  theme_bw() +
+  geom_spatraster(
+    data = GBR_delta_DHW
+  ) +
+  facet_wrap(~lyr, ncol = 4) +
+  scale_fill_gradient2(
+    name = "ΔDHW\nOISST - CRW",
+    low = "#2166AC",
+    mid = "white",
+    high = "#B2182B",
+    midpoint = 0,
+    na.value = NA
+  ) +
+  coord_sf(
+    xlim = c(141, 152.75),
+    ylim = c(-24.5, -9),
+    expand = FALSE
+  ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    strip.background = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "right"
+  )
+
+
+
+deltaDHW_plot
+
+
+```
+
+### Figure S12 Repeat aerial surveys
+
+Alluvial diagrams track individual reefs through their bleaching category at successive events for reefs surveyed across (A) all eight events (n = 30; 1998–2025) and (B) the 2016–2025 events (n = 81). Bars show the number of reefs in each ordered category per event (0 = none, 5 = most severe); ribbons trace individual-reef transitions. In both panels occupancy of severe categories (4–5) increases through recent events, category 5 appears only from 2022, and the frequency of upward transitions rises across intervals, indicating eroding recovery between events. Per-event maps show the latitudinal distribution of scored reefs.
+
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 12
+#| fig-width: 12
+
+library(ggalluvial)
+
+path <- "~/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds"
+ausmap <- readRDS("~/GBR-dhw/data/ausmap.rds")
+
+
+plot_alluvial <- function(path,
+                           year_min = -Inf,
+                           year_max = Inf) {
+ 
+
+  interpcolors <- c("#4DADE6", "#5BC36E", "#FFFF80",
+                    "#FF784E", "#D53B50", "#5A0E0E")
+
+  df <- readRDS(path) |>
+    st_make_valid() |>
+    as.data.frame() |>
+    filter(year > year_min, year < year_max)
+
+  ids_all_years <- df |>
+    distinct(LABEL_ID, year) |>
+    count(LABEL_ID, name = "nyears") |>
+    filter(nyears == n_distinct(df$year)) |>
+    pull(LABEL_ID)
+
+  GBR_ID_reefs <- df |>
+    filter(LABEL_ID %in% ids_all_years) |>
+    select(LABEL_ID, year, max_aerial_score)
+
+  formatted_data <- GBR_ID_reefs |>
+    rename(subject = LABEL_ID, response = max_aerial_score, survey = year) |>
+    group_by(survey, subject, response) |>
+    summarise(freq = n(), .groups = "drop") |>
+    mutate(
+      survey   = factor(survey, levels = sort(unique(df$year))),
+      response = factor(as.character(response), levels = as.character(0:5))
+    )
+
+  ggplot(
+    formatted_data,
+    aes(
+      x = survey,
+      stratum = response,
+      alluvium = subject,
+      y = freq,
+      fill = response,
+      label = response
+    )
+  ) +
+    geom_flow(color = "black", fill = "lightgrey") +
+    geom_stratum(alpha = 0.8) +
+    geom_text(stat = "stratum", size = 3) +
+    scale_fill_manual(values = interpcolors) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    labs(x = "", y = expression(italic(n)~"reefs"))
+}
+
+map_alluvial <- function(path,
+                           year_min = -Inf,
+                           year_max = Inf) {
+ 
+  
+    df <- readRDS(path) |>
+    st_make_valid() |> 
+    filter(year > year_min, year < year_max)
+  
+  ids_all_years <- df |>
+    distinct(LABEL_ID, year) |>
+    count(LABEL_ID, name = "nyears") |>
+    filter(nyears == n_distinct(df$year)) |>
+    pull(LABEL_ID) 
+  
+  GBR_ID_reefs <- df |>
+    filter(LABEL_ID %in% ids_all_years) |>
+    select(LABEL_ID, year, max_aerial_score)
+  
+  
+  ausmapcrop <- readRDS("~/GBR-dhw/data/ausmap.rds") |> 
+    st_transform(crs(df)) |> st_crop(st_bbox(GBR_ID_reefs |> st_buffer(50000)))
+  
+  formatted_data <- GBR_ID_reefs |>
+    rename(subject = LABEL_ID, response = max_aerial_score, survey = year) |>
+    group_by(survey, subject, response) |>
+    summarise(freq = n(), .groups = "drop") |>
+    mutate(
+      survey   = factor(survey, levels = sort(unique(df$year))),
+      response = factor(as.character(response), levels = as.character(0:5))
+    ) |> st_centroid()
+  
+  interpcolors <- c("#4DADE6", "#5BC36E", "#FFFF80",
+                    "#FF784E", "#D53B50", "#5A0E0E")
+  
+  formatted_data |># filter(year=="1998") |> 
+    ggplot() + theme_bw() +
+    geom_sf(aes(fill=as.character(as.numeric(response)-1)), shape=21, alpha=0.7, size=3) +
+    scale_fill_manual(values=interpcolors, name="aerial\nscore") +
+    geom_sf(data = ausmapcrop, fill = "#E2E7D4", alpha = 1) +
+    facet_wrap(~survey, nrow=1) +
+    coord_sf(lims_method = "geometry_bbox") 
+
+}
+
+
+figSa <- plot_alluvial(
+  path = "~/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds",
+  year_min = -Inf,
+  year_max = 2026
+)
+
+figSb <- map_alluvial(
+  path = "~/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds",
+  year_min = -Inf,
+  year_max = 2026
+)
+
+
+figSa1 <- plot_alluvial(
+  path = "~/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds",
+  year_min = 2016,
+  year_max = 2026
+)
+
+figSb1 <- map_alluvial(
+  path = "~/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds",
+  year_min = 2016,
+  year_max = 2026
+)
+
+wrap_elements((figSa/figSb) + plot_annotation(title = "1998-2025 (n=30)")) /
+  wrap_elements((figSa1/figSb1) +  plot_annotation(title = "2016-2025 (n=81)")) +
+  plot_layout(widths = c(1, 1, 1, 1)) +
+  plot_annotation(
+    tag_levels = "A",
+    tag_prefix = "(",
+    tag_suffix = ")"
+  ) 
+
+```
+
+### Figure S13 Within-reef change in bleaching severity 
+
+For reefs surveyed in all events, we regressed the change in aerial bleaching score on the change in DHW between each pair of events; the intercept (Δscore at ΔDHW = 0) estimates the change in bleaching a reef would show at identical thermal stress. Between consecutive events this matched-heat intercept was near zero or negative (e.g. 2016→2017, −0.35 [−0.63, −0.06]; 2022→2024, −0.63 [−0.94, −0.32]), consistent with recovery dominating short intervals. Across long baselines spanning the pre-/post-2016 thermal regime boundary it was consistently positive: a reef experiencing the same DHW in 2020–2022 as in 1998–2002 bleached approximately one to one-and-a-half ordered categories more severely two decades later (2002→2022, +1.68 [1.38, 1.98]; 2002→2020, +1.13 [0.70, 1.56]). Cells in which the within-reef ΔDHW distribution did not span zero are marked as extrapolated and not interpreted. Because each contrast is identified from repeated observation of the same reefs, this increase cannot be attributed to between-year differences in survey composition.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: true
+#| fig-height: 12
+#| fig-width: 12
+#| 
+year_order <- c("1998", "2002", "2016","2017","2020","2022","2024")
+pair_levels <- paste(head(year_order,-1), tail(year_order,-1), sep = "→")
+
+fd5 <- GBRMP_aerial_centroids |>
+  st_drop_geometry() |>
+  filter(year %in% year_order) |>
+  mutate(year = factor(year, levels = year_order)) |>
+  # guard against duplicate reef-year rows that would break diff():
+  group_by(LABEL_ID, year) |>
+  summarise(dhw = mean(dhw), aerial = mean(aerial), .groups = "drop") |>
+  group_by(LABEL_ID) |>
+  filter(n_distinct(year) == 7) |>            # BALANCED: reefs present in all 5
+  arrange(year, .by_group = TRUE) |>
+  reframe(                                    # one row per consecutive pair
+    year_pair = pair_levels,
+    ddhw      = diff(dhw),
+    dscore    = diff(aerial)
+  ) |>
+  mutate(year_pair = factor(year_pair, levels = pair_levels)) |> 
+  mutate(year = str_extract(as.character(year_pair), "^\\d{4}") |> as.integer())
+
+cell_stats5 <- fd5 |>
+  group_by(year_pair) |>
+  filter(n() >= 5) |>
+  group_modify(~{
+    m  <- lm(dscore ~ ddhw, data = .x)
+    ci <- confint(m)["(Intercept)", ]
+    tibble(
+      b0  = coef(m)[["(Intercept)"]],
+      lo  = ci[1], hi = ci[2],
+      n   = nrow(.x),
+      straddles0 = min(.x$ddhw) < 0 & max(.x$ddhw) > 0,
+      gap_sd     = abs(mean(.x$ddhw)) / sd(.x$ddhw)
+    )
+  }) |>
+  ungroup() |>
+  mutate(
+    extrap = !straddles0 | gap_sd > 1.5,
+    sig    = !extrap & (lo > 0 | hi < 0),
+    label  = sprintf("%.2f [%.2f, %.2f]%s", b0, lo, hi, ifelse(extrap, "*", ""))
+  )
+
+length(unique(fd5$LABEL_ID))   # <-- balanced-panel reef count; expect < 80
+
+repeat_a <- ggplot(fd5, aes(ddhw, dscore)) +
+  geom_hline(yintercept = 0, colour = "grey60") +
+  geom_vline(xintercept = 0, colour = "grey60") +
+  geom_point(aes(fill = dscore), alpha = 0.7, shape=21, size = 2,
+             show.legend = FALSE) +
+  geom_smooth(method = "lm", se = TRUE, colour = "black") +            # free intercept
+  geom_text(data = cell_stats5,
+            aes(x = -Inf, y = Inf, label = label, colour = sig),
+            hjust = -0.06, vjust = 1.4, size = 4.5, fontface = "bold",
+            inherit.aes = FALSE) +
+  
+  scale_colour_manual(values = c(`TRUE` = "#1a6e3c", `FALSE` = "darkred"),
+                      guide = "none") +
+  # geom_smooth(method = "lm", formula = y ~ 0 + x, se = FALSE,
+  #             colour = "steelblue", linetype = "dashed") +            # origin-forced
+  facet_wrap(~ year_pair, nrow = 1) +
+  scale_x_continuous(limits = c(-10,10), breaks = seq(-10,10,4)) +
+  scale_y_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+  labs(x = "Δ DHW (later − earlier event)",
+       y = "Δ aerial score (later − earlier)") +
+  theme_bw() +
+  scale_fill_distiller(palette="RdBu", name = "Δ aerial") 
+
+
+# ggplot() + theme_bw() +
+#   geom_point(data = fd5, aes(year, dscore),
+#             alpha = 0.7, size = 2,
+#              show.legend = FALSE) +
+#   geom_smooth(data = fd5, aes(year, dscore),
+#               method = "lm", se = TRUE, colour = "black") +            # free intercept
+#   # geom_smooth(method = "lm", formula = y ~ 0 + x, se = FALSE,
+#   #             colour = "steelblue", linetype = "dashed") +            # origin-forced
+#   facet_wrap(~ year_pair, nrow = 1) +
+#   scale_x_continuous(limits = c(-10,10), breaks = seq(-10,10,4)) +
+#   scale_y_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+#   labs(x = "Δ DHW (later − earlier event)",
+#        y = "Δ aerial score (later − earlier)") +
+#   theme_bw()
+# 
+# 
+# early <- c("1998","2002"); late <- c("2020","2022","2024")
+# 
+# long_fd <- GBRMP_aerial_centroids |>
+#   st_drop_geometry() |>
+#   filter(year %in% c(early, late)) |>
+#   group_by(LABEL_ID, year) |>
+#   summarise(dhw = mean(dhw), aerial = mean(aerial), .groups = "drop") |>
+#   group_by(LABEL_ID) |>
+#   filter(any(year %in% early) & any(year %in% late)) |>
+#   summarise(
+#     # earliest available early event vs latest available late event
+#     y0 = year[year %in% early][which.min(as.integer(as.character(year[year %in% early])))],
+#     y1 = year[year %in% late ][which.max(as.integer(as.character(year[year %in% late ])))],
+#     ddhw   = dhw[year == y1]    - dhw[year == y0],
+#     dscore = aerial[year == y1] - aerial[year == y0],
+#     .groups = "drop") |>
+#   mutate(year_pair = paste(y0, y1, sep = "→"))
+# 
+# nrow(long_fd)   # long-baseline reef count — the number that decides this
+# 
+# 
+# ggplot(long_fd, aes(ddhw, dscore)) +
+#   geom_hline(yintercept = 0, colour = "grey60") +
+#   geom_vline(xintercept = 0, colour = "grey60") +
+#   geom_point(aes(colour = year_pair), alpha = 0.7, size = 2,
+#              show.legend = FALSE) +
+#   geom_smooth(method = "lm", se = TRUE, colour = "black") +            # free intercept
+#   # geom_smooth(method = "lm", formula = y ~ 0 + x, se = FALSE,
+#   #             colour = "steelblue", linetype = "dashed") +            # origin-forced
+#   facet_wrap(~ year_pair, nrow = 2) +
+#   scale_x_continuous(limits = c(-8,8), breaks = seq(-8,8,2)) +
+#   scale_y_continuous(limits = c(-4,4), breaks = seq(-4,4,1)) +
+#   labs(x = "Δ DHW (later − earlier event)",
+#        y = "Δ aerial score (later − earlier)") +
+#   theme_bw()
+
+
+
+
+year_order <- c(1998, 2002, 2016, 2017, 2020, 2022, 2024)
+
+# balanced long table: reefs present in all 7 events, one row per reef-year
+bal <- GBRMP_aerial_centroids |>
+  st_drop_geometry() |>
+  filter(year %in% year_order) |>
+  group_by(LABEL_ID, year) |>
+  summarise(dhw = mean(dhw), aerial = mean(aerial), .groups = "drop") |>
+  mutate(year = as.integer(as.character(year))) |>
+  group_by(LABEL_ID) |>
+  filter(n_distinct(year) == 7) |>
+  ungroup()
+
+# all ordered pairs (early < late) via self-join on reef
+fd_grid <- bal |>
+  rename(y0 = year, dhw0 = dhw, aerial0 = aerial) |>
+  inner_join(bal |> rename(y1 = year, dhw1 = dhw, aerial1 = aerial),
+             by = "LABEL_ID", relationship = "many-to-many") |>
+  filter(y0 < y1) |>
+  transmute(LABEL_ID,
+            y0 = factor(y0, levels = year_order),
+            y1 = factor(y1, levels = year_order),
+            ddhw   = dhw1   - dhw0,
+            dscore = aerial1 - aerial0)
+
+length(unique(fd_grid$LABEL_ID))   # balanced-7 reef count
+
+library(broom)
+
+# ---- per-cell intercept at ΔDHW = 0, with support diagnostics --------------
+cell_stats <- fd_grid |>
+  group_by(y0, y1) |>
+  filter(n() >= 5) |>                                   # need enough points to fit
+  group_modify(~{
+    m  <- lm(dscore ~ ddhw, data = .x)
+    ci <- confint(m)["(Intercept)", ]
+    tibble(
+      b0      = coef(m)[["(Intercept)"]],               # matched-heat Δscore
+      lo      = ci[1],
+      hi      = ci[2],
+      n       = nrow(.x),
+      # does the ΔDHW cloud actually straddle 0? if not, b0 is extrapolation
+      straddles0 = min(.x$ddhw) < 0 & max(.x$ddhw) > 0,
+      # how far is 0 from the data centre, in SDs of ddhw (leverage proxy)
+      gap_sd  = abs(0 - mean(.x$ddhw)) / sd(.x$ddhw)
+    )
+  }) |>
+  ungroup() |>
+  mutate(
+    extrap = !straddles0 | gap_sd > 1.5,                # flag shaky intercepts
+    label  = sprintf("%.2f [%.2f, %.2f]%s",
+                     b0, lo, hi, ifelse(extrap, "*", "")),
+    # colour the label by whether the CI clears zero (and isn't extrapolated)
+    sig    = !extrap & (lo > 0 | hi < 0)
+  )
+library(tidyverse)
+library(grid)
+
+panel_bg <- expand_grid(
+  y0 = levels(fd_grid$y0),
+  y1 = levels(fd_grid$y1)
+) |>
+  mutate(
+    y0_num = as.integer(as.character(y0)),
+    y1_num = as.integer(as.character(y1)),
+    non_year = y1_num <= y0_num
+  ) |>
+  filter(non_year)
+
+repeat_b <- ggplot() +
+  geom_rect(
+    data = panel_bg,
+    aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf),
+    fill = "grey90",
+    colour = NA,
+    inherit.aes = FALSE
+  ) +
+  geom_hline(yintercept = 0, colour = "grey60") +
+  geom_vline(xintercept = 0, colour = "grey60") +
+  geom_point(
+    data = fd_grid,
+    aes(ddhw, dscore, fill = dscore),
+    alpha = 0.5,
+    shape = 21,
+    size = 1.3,
+    stroke = 0.1
+  ) +
+  geom_smooth(
+    data = fd_grid,
+    aes(ddhw, dscore),
+    method = "lm",
+    se = TRUE,
+    colour = "black",
+    linewidth = 0.6
+  ) +
+  geom_text(
+    data = cell_stats,
+    aes(
+      x = -Inf,
+      y = Inf,
+      label = label,
+      colour = sig
+    ),
+    hjust = -0.08,
+    vjust = 1.4,
+    size = 2.7,
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  scale_colour_manual(
+    values = c(`TRUE` = "#1a6e3c", `FALSE` = "darkred"),
+    guide = "none"
+  ) +
+  geom_text(
+    data = cell_stats,
+    aes(
+      x = Inf,
+      y = -Inf,
+      label = paste0("n=", n)
+    ),
+    hjust = 1.1,
+    vjust = -0.6,
+    size = 2.5,
+    colour = "grey45",
+    inherit.aes = FALSE
+  ) +
+  facet_grid(y0 ~ y1, drop = FALSE) +
+  scale_x_continuous(limits = c(-10, 10), breaks = seq(-8, 8, 4)) +
+  scale_y_continuous(limits = c(-4, 5), breaks = seq(-4, 4, 2)) +
+  scale_fill_distiller(palette = "RdBu", name = "Δ aerial") +
+  labs(
+    x = "Δ DHW (later − earlier event)",
+    y = "Δ aerial score (later − earlier)"
+  ) +
+  theme_bw() +
+  theme(
+    panel.spacing = unit(2, "pt")
+  )
+
+repeat_a / repeat_b + plot_layout(heights = c(0.2, 1))
+
+
+```
+
+### Figure S14 Latitudinal trends in bleaching 
+
+Latitudinal distribution of aerial bleaching severity across the Great Barrier Reef, pooled across survey years. Bars represent the total number of reefs within each 1° latitude bin, with colours indicating the maximum aerial bleaching score recorded for each reef. Figure summarises the cumulative spatial pattern of bleaching observations rather than interannual variation. Reef counts are highest through the central GBR, particularly around 21–22°S and 20–21°S, where all bleaching categories are represented. Northern and southern latitude bins contain fewer reefs, and therefore smaller total counts, but still show a mixture of bleaching severities.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: false
+#| fig-height: 9
+#| fig-width: 8
+
+library(dplyr)
+library(sf)
+library(ggplot2)
+
+all_events_year_centroid <- gbr_reefs %>%
+  st_make_valid() %>%
+  mutate(
+    area = st_area(geometry)
+  ) %>%
+  st_centroid() %>%
+  mutate(
+    lat = st_coordinates(geometry)[, "Y"]
+  ) %>%
+  st_drop_geometry() %>%
+  select(LABEL_ID, lat, area)
+
+all_events_year_lat <- readRDS("/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds") %>%
+  mutate(
+    aerial_score = as.character(max_aerial_score)
+  ) %>%
+  select(-median_aerial_score, -max_aerial_score) %>%
+  as.data.frame() %>%
+  left_join(all_events_year_centroid, by = "LABEL_ID") %>%
+  mutate(
+    latbin = floor(lat),
+    latbin_lab = paste0(abs(latbin + 1), "–", abs(latbin), "°S"),
+    aerial_score = factor(
+      aerial_score,
+      levels = c("0", "1", "2", "3", "4", "5")
+    )
+  ) %>%
+  group_by(latbin, latbin_lab, aerial_score) %>%
+  summarise(
+    count = n(),
+    area_km2 = as.numeric(sum(area, na.rm = TRUE)) / 1e6,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    latbin_lab = factor(
+      latbin_lab,
+      levels = unique(latbin_lab[order(latbin, decreasing = TRUE)])
+    )
+  ) %>%
+  arrange(desc(latbin), aerial_score)
+
+ggplot(
+  all_events_year_lat,
+  aes(
+    x = count,
+    y = latbin_lab,
+    fill = aerial_score
+  )
+) +
+  theme_bw() +
+  geom_col(
+    position = "stack",
+    colour = "black",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(
+    name = "",
+    values = c(
+      "0" = "#ABD9E9",
+      "1" = "#FFFFBF",
+      "2" = "#FEE090",
+      "3" = "#FDAE61",
+      "4" = "#F46D43",
+      "5" = "#D73027"
+    ),
+    labels = c(
+      "No bleaching (<1%)",
+      "Low bleaching (1–10%)",
+      "Medium bleaching (11–30%)",
+      "High bleaching (31–60%)",
+      "Very high bleaching (61–90%)",
+      "Extreme bleaching (>91%)"
+    )
+  ) +
+  labs(
+    x = expression(italic(n) ~ "reefs"),
+    y = "Latitude bin"
+  ) +
+  guides(
+    fill = guide_legend(reverse = TRUE)
+  ) +
+  theme(
+    legend.position = c(0.78, 0.22),
+    legend.background = element_rect(fill = "white", colour = "grey70"),
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+### Figure S15 A decade of severe bleaching on the Great Barrier Reef (2016-2018)
+
+Reef-level maximum bleaching score. Surveyed reefs across the GBR, coloured by maximum aerial bleaching score (0 = none to 5 = most severe) over a satellite basemap, shown in three latitudinal strips (north, central, south). Severe scores concentrate along the northern and central reef matrix, with a localised severe cluster in the far south, mirroring the latitudinal thermal-stress structure in Fig. S3.
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: false
+#| fig-height: 15.5
+#| fig-width: 4.5
+
+
+maxOISST <- readRDS("/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds") |>
+  group_by(LABEL_ID) |>
+  filter(year > 2016) |> 
+  slice_max(max_aerial_score, n=1) |>
+  drop_na(max_aerial_score)
+
+
+maxOISST_faceted <- maxOISST |>
+  st_make_valid() |>
+  mutate(
+    region = case_when(
+      st_coordinates(st_centroid(geometry))[, "Y"] > -15.5 ~ "North",
+      st_coordinates(st_centroid(geometry))[, "Y"] > -20.5 ~ "Central",
+      TRUE ~ "South"
+    ),
+    region = factor(region, levels = c("North", "Central", "South"))
+  )
+
+# north_plot <- ggplot() +
+#   theme_bw() +
+#   annotation_map_tile(
+#     type = "esri",
+#     zoomin = 0
+#   ) +
+#   geom_sf(
+#     data = maxOISST_faceted |> filter(region=="North"),
+#     aes(fill = factor(max_aerial_score)),
+#     shape = 21,
+#     colour = "grey20",
+#     linewidth = 0.1,
+#     show.legend=TRUE
+#   ) +
+#   scale_fill_brewer(
+#     palette = "RdBu",
+#     direction = -1,
+#     na.value = "grey80",
+#     name = "Max aerial score"
+#   ) +
+#   labs(
+#     x = NULL,
+#     y = NULL
+#   ) +
+#   theme(
+#     legend.position = "inside",
+#     legend.position.inside = c(0.78, 0.78),
+#     legend.justification = c(1, 0),
+#     legend.background = element_rect(
+#       fill = scales::alpha("white", 0.8),
+#       colour = "grey40",
+#       linewidth = 0.3
+#     ),
+#     legend.key = element_rect(fill = NA, colour = NA),
+#     strip.background = element_rect(fill = "grey95", colour = "grey40"),
+#     strip.text = element_text(face = "bold")
+#   ) +
+#   scale_colour_manual(values = c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43",  "#D73027"), name = "") +
+#   scale_fill_manual(values = c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43",  "#D73027"), name = "") +
+#   geom_sf(data = ausmap |> st_crop(maxOISST_faceted |> filter(region=="North") |> st_bbox()), fill = "#E2E7D4", alpha = 1)
+#
+# central_plot <- ggplot() +
+#   theme_bw() +
+#   annotation_map_tile(
+#     type = "esri",
+#     zoomin = 0
+#   ) +
+#   geom_sf(
+#     data = maxOISST_faceted |> filter(region=="Central"),
+#     aes(fill = factor(max_aerial_score)),
+#     shape = 21,
+#     colour = "grey20",
+#     linewidth = 0.1,
+#     show.legend=FALSE
+#   ) +
+#   scale_fill_brewer(
+#     palette = "RdBu",
+#     direction = -1,
+#     na.value = "grey80",
+#     name = "Max aerial score"
+#   ) +
+#   labs(
+#     x = NULL,
+#     y = NULL
+#   ) +
+#   theme(
+#     legend.position = "right",
+#     strip.background = element_rect(fill = "grey95", colour = "grey40"),
+#     strip.text = element_text(face = "bold")
+#   ) +
+#   scale_colour_manual(values = c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43",  "#D73027"), name = "") +
+#   scale_fill_manual(values = c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43",  "#D73027"), name = "") +
+#   geom_sf(data = ausmap |> st_crop(maxOISST_faceted |> filter(region=="Central") |> st_bbox()), fill = "#E2E7D4", alpha = 1)
+#
+#
+# south_plot <- ggplot() +
+#   theme_bw() +
+#   annotation_map_tile(
+#     type = "esri",
+#     zoomin = 0
+#   ) +
+#   geom_sf(
+#     data = maxOISST_faceted |> filter(region=="South"),
+#     aes(fill = factor(max_aerial_score)),
+#     shape = 21,
+#     colour = "grey20",
+#     linewidth = 0.1,
+#     show.legend=FALSE
+#   ) +
+#   scale_fill_brewer(
+#     palette = "RdBu",
+#     direction = -1,
+#     na.value = "grey80",
+#     name = "Max aerial score"
+#   ) +
+#   labs(
+#     x = NULL,
+#     y = NULL
+#   ) +
+#   theme(
+#     legend.position = "right",
+#     strip.background = element_rect(fill = "grey95", colour = "grey40"),
+#     strip.text = element_text(face = "bold")
+#   ) +
+#   scale_colour_manual(values = c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43",  "#D73027"), name = "") +
+#   scale_fill_manual(values = c("#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43",  "#D73027"), name = "") +
+#   geom_sf(data = ausmap |> st_crop(maxOISST_faceted |> filter(region=="South") |> st_bbox()), fill = "#E2E7D4", alpha = 1)
+#
+#
+#
+# (north_plot + labs(title = NULL)) |
+#   (central_plot + labs(title = NULL)) /
+#   (south_plot + labs(title = NULL)) #+
+#   # plot_layout(guides = "collect") &
+#   # theme(
+#   #   legend.position = "bottom"
+#   # )
+
+library(tidyverse)
+library(sf)
+library(tmap)
+
+tmap_mode("plot")
+
+score_cols <- c(
+  "0" = "#ABD9E9",
+  "1" = "#FFFFBF",
+  "2" = "#FEE090",
+  "3" = "#FDAE61",
+  "4" = "#F46D43",
+  "5" = "#D73027"
+)
+
+maxOISST_faceted <- maxOISST_faceted |>
+  mutate(
+    region = factor(region, levels = c("North", "Central", "South")),
+    max_aerial_score = factor(max_aerial_score, levels = 0:5)
+  )
+
+ausmapoutline <- rnaturalearth::ne_countries(scale="large", type = "countries") |>
+  st_transform(4326)
+
+
+north_map <- tm_basemap("Esri.WorldImagery", alpha=0.6) +
+  tm_shape(ausmapoutline) +
+    tm_polygons(
+      fill = "#E2E7D4",
+      fill_alpha = 0.5,
+      col = NA
+    ) +
+  tm_shape(maxOISST_faceted |> filter(region=="North"), is.main = TRUE) +
+    tm_polygons(
+      fill = "max_aerial_score",
+      fill.scale = tm_scale_categorical(
+        values = score_cols,
+        value.na = "grey80"),
+      lwd = 0.4,
+      col = "black"
+      ) +
+  tm_layout(
+    frame = TRUE,
+    legend.outside = FALSE,
+    legend.position = c("right", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    inner.margins = c(0, 0.2, 0, 0.2),
+    outer.margins = c(0.1, 0.2, 0.1, 0.2)
+  )
+
+
+central_map <- tm_basemap("Esri.WorldImagery", alpha=0.6) +
+  tm_shape(ausmapoutline) +
+  tm_polygons(
+    fill = "#E2E7D4",
+    fill_alpha = 0.5,
+    col = NA
+  ) +
+  tm_shape(maxOISST_faceted |> filter(region=="Central"), is.main = TRUE) +
+  tm_polygons(
+    fill = "max_aerial_score",
+    fill.legend = tm_legend_hide(),
+    fill.scale = tm_scale_categorical(
+      values = score_cols,
+      value.na = "grey80"),
+    lwd = 0.4,
+    col = "black"
+  ) +
+  tm_layout(
+    frame = TRUE,
+    legend.outside = FALSE,
+    legend.position = c("right", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    inner.margins = c(0, 0.2, 0, 0.2),
+    outer.margins = c(0.1, 0.2, 0.1, 0.2)
+  )
+
+
+south_map <- tm_basemap("Esri.WorldImagery", alpha=0.6) +
+  tm_shape(ausmapoutline) +
+  tm_polygons(
+    fill = "#E2E7D4",
+    fill_alpha = 0.5,
+    col = NA
+  ) +
+  tm_shape(maxOISST_faceted |> filter(region=="South"), is.main = TRUE) +
+  tm_polygons(
+    fill = "max_aerial_score",
+    fill.legend = tm_legend_hide(),
+    fill.scale = tm_scale_categorical(
+      values = score_cols,
+      value.na = "grey80"),
+    lwd = 0.4,
+    col = "black"
+  ) +
+  tm_layout(
+    frame = TRUE,
+    legend.outside = FALSE,
+    legend.position = c("right", "top"),
+    legend.bg.color = "white",
+    legend.bg.alpha = 0.8,
+    inner.margins = c(0, 0.2, 0, 0.2),
+    outer.margins = c(0.1, 0.2, 0.1, 0.2)
+  )
+
+#c(bottom, left, top, right)
+
+
+output2 <- tmap_arrange(
+  north_map,
+  central_map,
+  south_map,
+  ncol = 1
+)
+
+output2
+
+```
+
+### Figure S16 Latitudinal trends in bleaching across events
+
+Temporal and latitudinal structure of aerial bleaching severity across individual GBR reefs. Each row represents a reef ordered from north to south by centroid latitude, and each column represents a survey year. Tile colour indicates the maximum aerial bleaching score recorded for that reef in that year, ranging from no bleaching to extreme bleaching. 
+
+```{r}
+#| message: false
+#| warning: false
+#| cache: false
+#| fig-height: 15.5
+#| fig-width: 4.5
+
+library(dplyr)
+library(tidyr)
+library(sf)
+library(ggplot2)
+
+event_years_required <- c(1998, 2002, 2016, 2017, 2020, 2022, 2024)
+event_years_plot <- c(1998, 2002, 2016, 2017, 2022, 2020, 2024, 2025)
+
+latreefs <- readRDS("/Users/rof011/GBR-dhw/datasets/gbr_shape_aerial_OISST.rds") |> st_make_valid()
+
+reef_order <- latreefs %>%
+  filter(year %in% event_years_required) %>%
+  st_drop_geometry() %>%
+  group_by(LABEL_ID) %>%
+  filter(all(event_years_required %in% year)) %>%
+  ungroup() %>%
+  distinct(LABEL_ID) %>%
+  left_join(
+    latreefs %>%
+      st_centroid() %>%
+      mutate(lat = st_coordinates(geometry)[, "Y"]) %>%
+      st_drop_geometry() %>%
+      group_by(LABEL_ID) %>%
+      summarise(lat = mean(lat, na.rm = TRUE), .groups = "drop"),
+    by = "LABEL_ID"
+  ) %>%
+  arrange((lat)) %>%
+  pull(LABEL_ID)
+
+latreefs_plot <- latreefs %>%
+  filter(
+    year %in% event_years_plot,
+    LABEL_ID %in% reef_order
+  ) %>%
+  st_drop_geometry() %>%
+  select(LABEL_ID, year, max_aerial_score) %>%
+  mutate(
+    max_aerial_score = as.character(max_aerial_score)
+  ) %>%
+  complete(
+    LABEL_ID = reef_order,
+    year = event_years_plot
+  ) %>%
+  mutate(
+    LABEL_ID = factor(LABEL_ID, levels = reef_order),
+    year = factor(year, levels = event_years_plot),
+    max_aerial_score = factor(
+      max_aerial_score,
+      levels = c("0", "1", "2", "3", "4", "5")
+    )
+  )
+
+ggplot(
+  latreefs_plot,
+  aes(
+    x = year,
+    y = LABEL_ID,
+    fill = max_aerial_score
+  )
+) +
+  theme_bw() +
+  geom_tile(color="black", linewidth=0.05) +
+  scale_fill_manual(
+    name = "",
+    values = c(
+      "0" = "#ABD9E9",
+      "1" = "#FFFFBF",
+      "2" = "#FEE090",
+      "3" = "#FDAE61",
+      "4" = "#F46D43",
+      "5" = "#D73027"
+    ),
+    labels = c(
+      "No bleaching (<1%)",
+      "Low bleaching (1–10%)",
+      "Medium bleaching (11–30%)",
+      "High bleaching (31–60%)",
+      "Very high bleaching (61–90%)",
+      "Extreme bleaching (>91%)"
+    ),
+    na.value = "grey90",
+    drop = FALSE
+  ) +
+  labs(
+    x = "Year",
+    y = ""
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid = element_blank()
+  ) +
+  guides(fill = guide_legend(reverse = TRUE))
+
+```
+
+
+
+## Supplemenentary Tables
+
+### Table S1
+
+
+```{r}
+#| message: false
+#| warning: false
+library(tidyverse); library(kableExtra); library(INLA)
+ 
+fmt <- function(x, d = 2) formatC(x, format = "f", digits = d)
+ 
+fm1 <- readRDS("~/GBR-dhw/data/fm1.rds")
+
+
+# ---- 1. Fixed effects -------------------------------------------------------
+fe_labels <- c(
+  "(Intercept)"  = "Intercept (baseline, 1998)",
+  "dhw"          = "DHW (per °C-week)",
+  "year2002"="Year: 2002", "year2016"="Year: 2016", "year2017"="Year: 2017",
+  "year2020"="Year: 2020", "year2022"="Year: 2022", "year2024"="Year: 2024",
+  "year2025"="Year: 2025",
+  "dhw:year2002"="DHW × 2002","dhw:year2016"="DHW × 2016","dhw:year2017"="DHW × 2017",
+  "dhw:year2020"="DHW × 2020","dhw:year2022"="DHW × 2022","dhw:year2024"="DHW × 2024",
+  "dhw:year2025"="DHW × 2025")
+ 
+fixed_tab <- fm1$summary.fixed |>
+  rownames_to_column("term") |>
+  transmute(Parameter = fe_labels[term],
+            Mean = fmt(mean),
+            SD = fmt(sd),
+            `2.5%` = fmt(`0.025quant`),
+            `Median` = fmt(`0.5quant`),
+            `97.5%` = fmt(`0.975quant`)) |>
+  mutate(group = case_when(grepl("^DHW ×", Parameter) ~ "DHW × year interactions",
+                           grepl("^Year", Parameter)  ~ "Year effects (vs 1998)",
+                           TRUE ~ "Main effects")) |>
+  arrange(factor(group, levels=c("Main effects","Year effects (vs 1998)",
+                                 "DHW × year interactions")))
+ 
+# ---- 2. Hyperparameters: reconstruct interpretable scales -------------------
+hp <- fm1$summary.hyperpar
+# ordered POM cut-points from increment thetas
+th <- hp[grep("theta.*POM", rownames(hp)), "mean"]
+alpha <- cumsum(c(th[1], exp(th[-1])))
+# SPDE range/SD: read directly if pcmatern, else transform matern thetas
+sp <- tryCatch(inla.spde2.result(fm1, "spatial.field", spde, do.transform = TRUE),
+               error = function(e) NULL)
+if (!is.null(sp)) {
+  rng <- inla.qmarginal(c(.025,.5,.975), sp$marginals.range.nominal[[1]])
+  sdv <- sqrt(inla.qmarginal(c(.025,.5,.975), sp$marginals.variance.nominal[[1]]))
+} else {  # pcmatern reports natively
+  rng <- as.numeric(hp[grep("Range", rownames(hp)), c("0.025quant","0.5quant","0.975quant")])
+  sdv <- as.numeric(hp[grep("Stdev", rownames(hp)), c("0.025quant","0.5quant","0.975quant")])
+}
+iid_prec <- hp[grep("LABEL_ID", rownames(hp)), c("0.025quant","0.5quant","0.975quant")]
+iid_sd   <- 1/sqrt(rev(as.numeric(iid_prec)))   # precision -> SD (reverse quantiles)
+ 
+hyper_tab <- tribble(
+  ~Parameter, ~`2.5%`, ~Median, ~`97.5%`,
+  "POM cut-point α₁ (logit)",            fmt(alpha[1]), "", "",
+  "POM cut-point α₂ (logit)",            fmt(alpha[2]), "", "",
+  "POM cut-point α₃ (logit)",            fmt(alpha[3]), "", "",
+  "Spatial field: range (km)",  fmt(rng[1]/1000,0), fmt(rng[2]/1000,0), fmt(rng[3]/1000,0),
+  "Spatial field: marginal SD (logit)", fmt(sdv[1]),   fmt(sdv[2]),     fmt(sdv[3]),
+  "Reef random effect: SD (logit)",      fmt(iid_sd[1]),fmt(iid_sd[2]),  fmt(iid_sd[3]))
+ 
+# ---- 3. Model fit -----------------------------------------------------------
+fit_tab <- tribble(
+  ~Statistic, ~Value,
+  "DIC",  fmt(fm1$dic$dic, 1),
+  "WAIC", fmt(fm1$waic$waic, 1),
+  "Effective parameters (pD)", fmt(fm1$dic$p.eff, 1),
+  "Marginal log-likelihood", fmt(fm1$mlik[1], 1))
+ 
+# ---- 4. Render --------------------------------------------------------------
+fmt_out <- "html"   # "latex" for manuscript
+ 
+tab_fixed <- fixed_tab |> select(-group) |>
+  kbl(format = fmt_out, booktabs = TRUE, align = "lrrrrr",
+      caption = "Supplementary Table S1. Posterior summaries of fixed effects from the spatial proportional-odds bleaching model (fm1). Estimates are on the logit scale; year effects are relative to the 1998 reference event.") |>
+  kable_styling(latex_options = c("hold_position"), full_width = FALSE,
+                bootstrap_options = c("striped","condensed")) |>
+  pack_rows(index = table(fixed_tab$group)[unique(fixed_tab$group)])
+ 
+tab_hyper <- hyper_tab |>
+  kbl(format = fmt_out, booktabs = TRUE, align = "lrrr",
+      caption = "Supplementary Table S1 (cont.). Hyperparameters on interpretable scales: ordered POM cut-points, SPDE spatial range and marginal standard deviation, and reef-level random-effect standard deviation.") |>
+  kable_styling(latex_options = c("hold_position"), full_width = FALSE,
+                bootstrap_options = c("striped","condensed")) |>
+  footnote(general = "Cut-points reconstructed from INLA increment parameterisation (α₁=θ₁; α_k=α_{k-1}+exp(θ_k)). Range in km (domain CRS EPSG:32755). Reef SD derived from the IID precision posterior.",
+           general_title = "Note: ", footnote_as_chunk = TRUE)
+ 
+tab_fit <- fit_tab |>
+  kbl(format = fmt_out, booktabs = TRUE, align = "lr",
+      caption = "Supplementary Table S1 (cont.). Model fit statistics.") |>
+  kable_styling(latex_options = c("hold_position"), full_width = FALSE,
+                bootstrap_options = c("striped","condensed"))
+ 
+```
+
+```{r}
+tab_fixed; 
+```
+
+```{r}
+tab_hyper
+```
+
+```{r}
+tab_fit
+
+```
+
+### Table S2
+
+```{r}
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(broom)
+
+fmt_out <- "html"   # "latex" for manuscript
+
+coef_tab <- tidy(m) |>
+  mutate(
+    section = "Coefficients",
+    term = recode(
+      term,
+      `(Intercept)` = "Intercept",
+      ndjfm_anomaly = "NDJFM anomaly"
+    )
+  ) |>
+  transmute(
+    section,
+    term,
+    estimate = estimate,
+    std_error = std.error,
+    statistic = statistic,
+    p_value = p.value
+  )
+
+fit_tab <- glance(m) |>
+  tidyr::crossing(
+    tibble(
+      term = c(
+        "Residual standard error",
+        "Residual degrees of freedom",
+        "R-squared",
+        "Adjusted R-squared",
+        "F-statistic",
+        "Model p-value"
+      )
+    )
+  ) |>
+  mutate(
+    section = "Model fit",
+    estimate = case_when(
+      term == "Residual standard error" ~ sigma,
+      term == "Residual degrees of freedom" ~ df.residual,
+      term == "R-squared" ~ r.squared,
+      term == "Adjusted R-squared" ~ adj.r.squared,
+      term == "F-statistic" ~ statistic,
+      term == "Model p-value" ~ p.value
+    ),
+    std_error = NA_real_,
+    statistic = NA_real_,
+    p_value = NA_real_
+  ) |>
+  select(section, term, estimate, std_error, statistic, p_value)
+
+model_main_tab <- bind_rows(coef_tab, fit_tab) |>
+  mutate(
+    across(
+      c(estimate, std_error, statistic, p_value),
+      ~ case_when(
+        is.na(.x) ~ NA_character_,
+        abs(.x) < 0.001 ~ formatC(.x, format = "e", digits = 2),
+        TRUE ~ formatC(.x, format = "f", digits = 3)
+      )
+    )
+  )
+
+tab_model_main <- model_main_tab |>
+  kbl(
+    format = fmt_out,
+    booktabs = TRUE,
+    align = "llrrrr",
+    col.names = c(
+      "Section",
+      "Term",
+      "Estimate",
+      "Std. error",
+      "Statistic",
+      "P-value"
+    ),
+    caption = "Supplementary Table S2. Weighted linear model relating year-level bleaching intensity estimates to NDJFM anomaly. Year estimates were weighted by inverse posterior variance."
+  ) |>
+  kable_styling(
+    latex_options = c("hold_position"),
+    full_width = FALSE,
+    bootstrap_options = c("striped", "condensed")
+  ) |>
+  pack_rows(index = table(model_main_tab$section)[unique(model_main_tab$section)])
+
+tab_model_main
+
+``
